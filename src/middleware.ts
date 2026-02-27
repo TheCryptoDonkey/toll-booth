@@ -33,11 +33,14 @@ export function lightningGate(config: GateConfig & EventHandler): MiddlewareHand
     if (authHeader?.startsWith('L402 ')) {
       const result = handleL402Auth(authHeader, rootKey, meter, cost, defaultAmount)
       if (result.authorised) {
-        config.onPayment?.({
-          timestamp: new Date().toISOString(),
-          paymentHash: result.paymentHash!,
-          amountSats: cost,
-        })
+        // Fire onPayment once when an invoice is first settled (credit granted)
+        if (result.creditedAmount) {
+          config.onPayment?.({
+            timestamp: new Date().toISOString(),
+            paymentHash: result.paymentHash!,
+            amountSats: result.creditedAmount,
+          })
+        }
         config.onRequest?.({
           timestamp: new Date().toISOString(),
           endpoint: path,
@@ -93,7 +96,7 @@ function handleL402Auth(
   meter: CreditMeter,
   cost: number,
   defaultAmount: number,
-): { authorised: boolean; remaining: number; paymentHash?: string } {
+): { authorised: boolean; remaining: number; paymentHash?: string; creditedAmount?: number } {
   try {
     // Format: L402 <macaroon>:<preimage>
     const token = authHeader.slice(5) // Remove "L402 "
@@ -112,16 +115,19 @@ function handleL402Auth(
       .digest('hex')
     if (computedHash !== result.paymentHash) return { authorised: false, remaining: 0 }
 
-    // Credit on first valid presentation of preimage (idempotent via upsert)
+    // Credit on first valid presentation of preimage
+    let creditedAmount: number | undefined
     if (meter.balance(result.paymentHash) === 0) {
-      meter.credit(result.paymentHash, result.creditBalance ?? defaultAmount)
+      const amount = result.creditBalance ?? defaultAmount
+      meter.credit(result.paymentHash, amount)
+      creditedAmount = amount
     }
 
     // Debit credit for this request
     const debit = meter.debit(result.paymentHash, cost)
     if (!debit.success) return { authorised: false, remaining: debit.remaining }
 
-    return { authorised: true, remaining: debit.remaining, paymentHash: result.paymentHash }
+    return { authorised: true, remaining: debit.remaining, paymentHash: result.paymentHash, creditedAmount }
   } catch {
     return { authorised: false, remaining: 0 }
   }
