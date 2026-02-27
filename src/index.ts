@@ -1,8 +1,13 @@
-// Barrel export — re-exports all public types from lightning-gate.
+// src/index.ts
+export { lightningGate } from './middleware.js'
+export { mintMacaroon, verifyMacaroon, parseCaveats } from './macaroon.js'
+export { CreditMeter } from './meter.js'
+export { FreeTier } from './free-tier.js'
+
 export type {
+  LightningBackend,
   Invoice,
   InvoiceStatus,
-  LightningBackend,
   PricingTable,
   GateConfig,
   PaymentEvent,
