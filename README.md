@@ -2,9 +2,7 @@
 
 [![MIT licence](https://img.shields.io/badge/licence-MIT-blue.svg)](./package.json)
 
-Drop-in L402 middleware — your API becomes a toll booth in minutes.
-
-## Quick start
+Embeddable [L402](https://docs.lightning.engineering/the-lightning-network/l402) middleware for JavaScript. Gate any HTTP API behind Lightning payments — no separate proxy, no LND required.
 
 ```ts
 import { Hono } from 'hono'
@@ -26,6 +24,25 @@ const booth = tollBooth({
 
 app.use('/api/*', booth)
 ```
+
+## Why not Aperture?
+
+[Aperture](https://github.com/lightninglabs/aperture) is Lightning Labs' production L402 reverse proxy. It's battle-tested and feature-rich. Use it if you can.
+
+toll-booth exists for the cases where Aperture doesn't fit:
+
+| | Aperture | toll-booth |
+|---|---|---|
+| **Language** | Go binary | TypeScript middleware |
+| **Deployment** | Standalone reverse proxy | Embeds in your existing app |
+| **Lightning node** | Requires LND | Phoenixd (lighter), LND coming soon |
+| **Serverless** | No — long-running process | Yes — runs on Cloudflare Workers, Deno, Bun |
+| **Configuration** | YAML file | Programmatic (code) |
+| **Maturity** | Production (powers Lightning Loop) | Alpha |
+
+**Use Aperture** if you run LND and want a proven, standalone proxy with TLS, Tor, Prometheus, and dynamic pricing.
+
+**Use toll-booth** if you want L402 as middleware in a JS app, need Phoenixd support, or deploy to serverless/edge runtimes where a Go binary isn't an option.
 
 ## Payment flow
 
@@ -51,7 +68,3 @@ Each IP address gets a configurable number of free requests per day — no signu
 ## Reference deployment
 
 See [`examples/valhalla-proxy/`](./examples/valhalla-proxy/) for a complete Docker Compose setup that gates a [Valhalla](https://github.com/valhalla/valhalla) routing engine behind toll-booth.
-
-## Protocol
-
-toll-booth implements the [L402 protocol](https://docs.lightning.engineering/the-lightning-network/l402) — HTTP 402 Payment Required combined with the Lightning Network for machine-payable APIs.
