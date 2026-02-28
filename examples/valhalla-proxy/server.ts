@@ -1,16 +1,26 @@
 // examples/valhalla-proxy/server.ts
 import { serve } from '@hono/node-server'
 import { Hono } from 'hono'
-import { tollBooth } from 'toll-booth'
+import { cors } from 'hono/cors'
+import { tollBooth, invoiceStatus } from 'toll-booth'
 import { phoenixdBackend } from 'toll-booth/backends/phoenixd'
 
 const app = new Hono()
 
+const backend = phoenixdBackend({
+  url: process.env.PHOENIXD_URL ?? 'http://localhost:9740',
+  password: process.env.PHOENIXD_PASSWORD ?? '',
+})
+
+app.use('/*', cors({
+  origin: '*',
+  exposeHeaders: ['WWW-Authenticate', 'X-Coverage'],
+}))
+
+app.get('/invoice-status/:paymentHash', invoiceStatus(backend))
+
 const booth = tollBooth({
-  backend: phoenixdBackend({
-    url: process.env.PHOENIXD_URL ?? 'http://localhost:9740',
-    password: process.env.PHOENIXD_PASSWORD ?? '',
-  }),
+  backend,
   pricing: {
     '/route': 2,
     '/isochrone': 5,
