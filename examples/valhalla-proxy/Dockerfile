@@ -16,4 +16,4 @@ RUN sed -i 's|"file:../../"|"file:./toll-booth-0.1.0.tgz"|' package.json
 RUN npm install
 COPY examples/valhalla-proxy/server.ts ./
 EXPOSE 3000
-CMD ["node", "--loader", "tsx", "server.ts"]
+CMD ["node", "--import", "tsx", "server.ts"]
