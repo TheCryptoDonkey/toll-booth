@@ -87,6 +87,21 @@ describe('tollBooth middleware', () => {
       expect(wwwAuth).toMatch(/^L402 macaroon="[^"]+", invoice="lnbc/)
     })
 
+    it('includes macaroon and payment_hash in 402 response body', async () => {
+      const backend = mockBackend()
+      const app = createApp(backend, { freeTier: undefined })
+
+      const res = await app.request('/route', { method: 'POST' })
+      expect(res.status).toBe(402)
+
+      const body = await res.json()
+      expect(body).toHaveProperty('macaroon')
+      expect(body).toHaveProperty('payment_hash')
+      expect(body.payment_hash).toBe('b'.repeat(64))
+      expect(typeof body.macaroon).toBe('string')
+      expect(body.macaroon.length).toBeGreaterThan(0)
+    })
+
     it('rejects invalid Authorization header', async () => {
       const app = createApp(mockBackend(), { freeTier: undefined })
       const res = await app.request('/route', {

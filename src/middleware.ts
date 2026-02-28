@@ -84,7 +84,13 @@ export function tollBooth(config: BoothConfig & EventHandler): MiddlewareHandler
     c.header('WWW-Authenticate', `L402 macaroon="${macaroon}", invoice="${invoice.bolt11}"`)
     c.header('X-Coverage', 'GB')
     return c.json(
-      { error: 'Payment required', invoice: invoice.bolt11, amount_sats: defaultAmount },
+      {
+        error: 'Payment required',
+        invoice: invoice.bolt11,
+        macaroon,
+        payment_hash: invoice.paymentHash,
+        amount_sats: defaultAmount,
+      },
       402,
     )
   }
