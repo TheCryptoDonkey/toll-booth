@@ -23,7 +23,9 @@ services:
     command: ["--agree-to-terms-of-service", "--http-bind-ip", "0.0.0.0"]
 
   routing-proxy:
-    build: .
+    build:
+      context: ../../
+      dockerfile: examples/valhalla-proxy/Dockerfile
     restart: always
     ports:
       - "0.0.0.0:3000:3000"
