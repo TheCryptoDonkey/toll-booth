@@ -1,5 +1,6 @@
 // src/create-invoice.ts
 import type { Context } from 'hono'
+import QRCode from 'qrcode'
 import type { LightningBackend, CreditTier } from './types.js'
 import type { InvoiceStore } from './invoice-store.js'
 import { mintMacaroon } from './macaroon.js'
@@ -50,6 +51,8 @@ export function createInvoiceHandler(deps: CreateInvoiceDeps) {
 
       deps.invoiceStore.store(invoice.paymentHash, invoice.bolt11, creditSats, macaroon)
 
+      const qrSvg = await QRCode.toString(`lightning:${invoice.bolt11}`.toUpperCase(), { type: 'svg', margin: 2 })
+
       return c.json({
         bolt11: invoice.bolt11,
         payment_hash: invoice.paymentHash,
@@ -57,6 +60,7 @@ export function createInvoiceHandler(deps: CreateInvoiceDeps) {
         amount_sats: requestedAmount,
         credit_sats: creditSats,
         macaroon,
+        qr_svg: qrSvg,
       })
     } catch {
       return c.json({ error: 'Failed to create invoice' }, 500)

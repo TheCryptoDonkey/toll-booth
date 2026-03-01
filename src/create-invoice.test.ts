@@ -57,6 +57,7 @@ describe('createInvoiceHandler', () => {
     expect(body.credit_sats).toBe(11_100) // Pro tier with bonus
     expect(body.macaroon).toBeTruthy()
     expect(body.payment_url).toBe(`/invoice-status/${'b'.repeat(64)}`)
+    expect(body.qr_svg).toContain('<svg')
 
     // Verify stored
     const stored = invoiceStore.get('b'.repeat(64))

@@ -224,7 +224,7 @@ function clientScript(): string {
   window.selectTier = function(el){
     document.querySelectorAll('.tier').forEach(function(t){t.classList.remove('selected')});
     el.classList.add('selected');
-    // Create a new invoice for this tier, then redirect to its payment page
+    // Create a new invoice for this tier, then update the page in-place
     fetch('/create-invoice', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
@@ -232,9 +232,31 @@ function clientScript(): string {
     })
     .then(function(r){return r.json()})
     .then(function(d){
-      if (d.payment_url) {
-        window.location.href = d.payment_url;
-      }
+      if (!d.bolt11) return;
+      // Update QR code in-place
+      var qrWrap = document.getElementById('qr-wrap');
+      if (qrWrap && d.qr_svg) qrWrap.innerHTML = d.qr_svg;
+      // Update invoice string
+      var invStr = document.getElementById('invoice-str');
+      if (invStr) invStr.textContent = d.bolt11;
+      // Update payment hash for polling
+      hash = d.payment_hash;
+      card.dataset.paymentHash = d.payment_hash;
+      // Update browser URL without reload
+      if (d.payment_url) history.replaceState(null, '', d.payment_url);
+      // Restart polling with new hash
+      clearInterval(pollInterval);
+      pollInterval = setInterval(function(){
+        fetch('/invoice-status/' + hash, {headers:{'Accept':'application/json'}})
+          .then(function(r){return r.json()})
+          .then(function(d){
+            if(d.paid){
+              clearInterval(pollInterval);
+              showPaid(d.preimage);
+            }
+          })
+          .catch(function(){});
+      }, 3000);
     })
     .catch(function(e){ console.error('Tier selection failed:', e) });
   };
