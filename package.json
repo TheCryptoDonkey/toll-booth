@@ -29,8 +29,10 @@
     "qrcode": "^1.5.4"
   },
   "devDependencies": {
+    "@hono/node-server": "^1.19.9",
     "@types/better-sqlite3": "^7.6.0",
     "@types/qrcode": "^1.5.6",
+    "tsx": "^4.21.0",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
   }
