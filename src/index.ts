@@ -10,6 +10,8 @@ export { InvoiceStore } from './invoice-store.js'
 export type { StoredInvoice } from './invoice-store.js'
 export { FreeTier } from './free-tier.js'
 export { renderPaymentPage, renderErrorPage } from './payment-page.js'
+export { StatsCollector } from './stats.js'
+export type { BoothStats } from './stats.js'
 
 export type {
   LightningBackend,
@@ -20,4 +22,5 @@ export type {
   CreditTier,
   PaymentEvent,
   RequestEvent,
+  ChallengeEvent,
 } from './types.js'

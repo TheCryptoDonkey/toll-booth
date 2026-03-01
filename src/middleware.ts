@@ -1,6 +1,6 @@
 // src/middleware.ts
 import type { Context, MiddlewareHandler } from 'hono'
-import type { BoothConfig, PaymentEvent, RequestEvent } from './types.js'
+import type { BoothConfig, PaymentEvent, RequestEvent, ChallengeEvent } from './types.js'
 import { mintMacaroon, verifyMacaroon } from './macaroon.js'
 import { FreeTier } from './free-tier.js'
 import { CreditMeter } from './meter.js'
@@ -11,6 +11,7 @@ import Database from 'better-sqlite3'
 export type EventHandler = {
   onPayment?: (event: PaymentEvent) => void
   onRequest?: (event: RequestEvent) => void
+  onChallenge?: (event: ChallengeEvent) => void
 }
 
 export interface MiddlewareInternals {
@@ -99,6 +100,12 @@ export function tollBooth(config: BoothConfig & EventHandler & MiddlewareInterna
 
     // Store invoice details for the payment page
     invoiceStore?.store(invoice.paymentHash, invoice.bolt11, defaultAmount, macaroon)
+
+    config.onChallenge?.({
+      timestamp: new Date().toISOString(),
+      endpoint: path,
+      amountSats: defaultAmount,
+    })
 
     c.header('WWW-Authenticate', `L402 macaroon="${macaroon}", invoice="${invoice.bolt11}"`)
     c.header('X-Coverage', 'GB')

@@ -155,3 +155,12 @@ export interface RequestEvent {
   latencyMs: number
   authenticated: boolean
 }
+
+/**
+ * A record of a 402 challenge issued to a client.
+ */
+export interface ChallengeEvent {
+  timestamp: string
+  endpoint: string
+  amountSats: number
+}

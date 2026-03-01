@@ -43,6 +43,7 @@ function setup(overrides?: Partial<{ nwcPayInvoice: any; redeemCashu: any }>) {
   const app = new Hono()
   app.get('/invoice-status/:paymentHash', booth.invoiceStatusHandler)
   app.post('/create-invoice', booth.createInvoiceHandler)
+  app.get('/stats', booth.statsHandler)
   if (booth.nwcPayHandler) app.post('/nwc-pay', booth.nwcPayHandler)
   if (booth.cashuRedeemHandler) app.post('/cashu-redeem', booth.cashuRedeemHandler)
   app.use('/*', booth.middleware)
@@ -211,6 +212,56 @@ describe('Booth', () => {
     it('does not expose /cashu-redeem when adapter not provided', async () => {
       const { booth } = setup()
       expect(booth.cashuRedeemHandler).toBeUndefined()
+      booth.close()
+    })
+  })
+
+  describe('statsHandler', () => {
+    it('returns stats from localhost (no X-Forwarded-For)', async () => {
+      const { app, booth } = setup()
+
+      const res = await app.request('/stats')
+      expect(res.status).toBe(200)
+      const body = await res.json()
+      expect(body.upSince).toBeTruthy()
+      expect(body.requests.total).toBe(0)
+
+      booth.close()
+    })
+
+    it('returns stats when X-Forwarded-For is loopback', async () => {
+      const { app, booth } = setup()
+
+      const res = await app.request('/stats', {
+        headers: { 'X-Forwarded-For': '127.0.0.1' },
+      })
+      expect(res.status).toBe(200)
+
+      booth.close()
+    })
+
+    it('rejects stats from non-local IP', async () => {
+      const { app, booth } = setup()
+
+      const res = await app.request('/stats', {
+        headers: { 'X-Forwarded-For': '203.0.113.50' },
+      })
+      expect(res.status).toBe(403)
+      const body = await res.json()
+      expect(body.error).toContain('localhost')
+
+      booth.close()
+    })
+
+    it('records stats from middleware events', async () => {
+      const { app, booth } = setup()
+
+      // Trigger a 402 challenge
+      await app.request('/route', { method: 'POST' })
+
+      const snap = booth.stats.snapshot()
+      expect(snap.requests.challenged).toBe(1)
+
       booth.close()
     })
   })

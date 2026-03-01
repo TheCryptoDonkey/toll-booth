@@ -7,6 +7,7 @@ import { invoiceStatus } from './invoice-status.js'
 import { createInvoiceHandler } from './create-invoice.js'
 import { CreditMeter } from './meter.js'
 import { InvoiceStore } from './invoice-store.js'
+import { StatsCollector } from './stats.js'
 import { randomBytes } from 'node:crypto'
 import Database from 'better-sqlite3'
 
@@ -31,6 +32,9 @@ export class Booth {
   readonly nwcPayHandler?: (c: Context) => Promise<Response>
   readonly cashuRedeemHandler?: (c: Context) => Promise<Response>
 
+  /** Aggregate usage statistics. Resets on restart. */
+  readonly stats: StatsCollector
+
   private readonly db: Database.Database
   private readonly meter: CreditMeter
   private readonly invoiceStore: InvoiceStore
@@ -42,12 +46,31 @@ export class Booth {
     this.db.pragma('journal_mode = WAL')
     this.meter = new CreditMeter(this.db)
     this.invoiceStore = new InvoiceStore(this.db)
+    this.stats = new StatsCollector()
 
     const defaultAmount = config.defaultInvoiceAmount ?? 1000
+
+    // Wire stats collection while preserving user-provided callbacks
+    const userOnPayment = config.onPayment
+    const userOnRequest = config.onRequest
+    const userOnChallenge = config.onChallenge
+    const stats = this.stats
 
     // Middleware shares the same meter, invoice store, and root key
     this.middleware = tollBooth({
       ...config,
+      onPayment: (event) => {
+        stats.recordPayment(event)
+        userOnPayment?.(event)
+      },
+      onRequest: (event) => {
+        stats.recordRequest(event)
+        userOnRequest?.(event)
+      },
+      onChallenge: (event) => {
+        stats.recordChallenge(event)
+        userOnChallenge?.(event)
+      },
       _meter: this.meter,
       _invoiceStore: this.invoiceStore,
       _rootKey: this.rootKey,
@@ -82,6 +105,7 @@ export class Booth {
             return c.json({ error: 'nwcUri and bolt11 are required' }, 400)
           }
           const preimage = await nwcPay(nwcUri, bolt11)
+          stats.recordNwcPayment(defaultAmount)
           return c.json({ preimage })
         } catch (err) {
           return c.json({ error: err instanceof Error ? err.message : 'NWC payment failed' }, 500)
@@ -101,6 +125,7 @@ export class Booth {
           }
           const credited = await redeem(token, paymentHash)
           meter.credit(paymentHash, credited)
+          stats.recordCashuRedemption(credited)
           return c.json({ credited })
         } catch (err) {
           return c.json({ error: err instanceof Error ? err.message : 'Cashu redemption failed' }, 500)
@@ -109,7 +134,23 @@ export class Booth {
     }
   }
 
+  /**
+   * Handler for GET /stats — returns aggregate usage statistics as JSON.
+   * Restricted to localhost — returns 403 for requests from other IPs.
+   */
+  statsHandler = async (c: Context): Promise<Response> => {
+    const forwarded = c.req.header('X-Forwarded-For')?.split(',')[0]?.trim()
+    if (forwarded && !isLoopback(forwarded)) {
+      return c.json({ error: 'Stats only available from localhost' }, 403)
+    }
+    return c.json(this.stats.snapshot())
+  }
+
   close(): void {
     this.db.close()
   }
+}
+
+function isLoopback(ip: string): boolean {
+  return ip === '127.0.0.1' || ip === '::1' || ip === 'localhost'
 }
