@@ -29,6 +29,7 @@ const booth = new Booth({
   },
   upstream: process.env.VALHALLA_URL ?? 'http://localhost:8002',
   defaultInvoiceAmount: parseInt(process.env.DEFAULT_INVOICE_SATS ?? '1000', 10),
+  rootKey: process.env.ROOT_KEY,
   dbPath: process.env.DB_PATH ?? './credits.db',
   creditTiers: [
     { amountSats: 1_000,   creditSats: 1_000,   label: 'Starter' },
