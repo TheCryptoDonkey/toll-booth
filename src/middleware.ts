@@ -18,6 +18,7 @@ export interface MiddlewareInternals {
   _invoiceStore?: InvoiceStore
   _meter?: CreditMeter
   _rootKey?: string
+  _freeTier?: FreeTier | null
 }
 
 export function tollBooth(config: BoothConfig & EventHandler & MiddlewareInternals): MiddlewareHandler {
@@ -32,7 +33,9 @@ export function tollBooth(config: BoothConfig & EventHandler & MiddlewareInterna
     meter = new CreditMeter(db)
   }
   const invoiceStore = config._invoiceStore
-  const freeTier = config.freeTier ? new FreeTier(config.freeTier.requestsPerDay) : null
+  const freeTier = config._freeTier !== undefined
+    ? config._freeTier
+    : (config.freeTier ? new FreeTier(config.freeTier.requestsPerDay) : null)
   const upstream = config.upstream.replace(/\/$/, '')
 
   return async (c: Context, next) => {

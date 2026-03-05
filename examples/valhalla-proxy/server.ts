@@ -47,6 +47,7 @@ const booth = new Booth({
 
 app.get('/invoice-status/:paymentHash', booth.invoiceStatusHandler)
 app.post('/create-invoice', booth.createInvoiceHandler)
+app.post('/admin/reset-free-tier', booth.resetFreeTierHandler)
 app.use('/*', booth.middleware)
 
 const port = parseInt(process.env.PORT ?? '3000', 10)

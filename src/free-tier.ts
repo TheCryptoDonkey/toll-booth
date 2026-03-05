@@ -15,6 +15,11 @@ export class FreeTier {
     }
   }
 
+  /** Reset all counters (e.g. via admin endpoint). */
+  reset(): void {
+    this.counters.clear()
+  }
+
   check(ip: string): FreeTierResult {
     const today = new Date().toISOString().slice(0, 10) // YYYY-MM-DD
 

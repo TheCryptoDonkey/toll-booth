@@ -3,6 +3,7 @@ import type { Context } from 'hono'
 import type { BoothConfig } from './types.js'
 import type { EventHandler } from './middleware.js'
 import { tollBooth } from './middleware.js'
+import { FreeTier } from './free-tier.js'
 import { invoiceStatus } from './invoice-status.js'
 import { createInvoiceHandler } from './create-invoice.js'
 import { CreditMeter } from './meter.js'
@@ -39,6 +40,7 @@ export class Booth {
   private readonly meter: CreditMeter
   private readonly invoiceStore: InvoiceStore
   private readonly rootKey: string
+  private readonly freeTier: FreeTier | null
 
   constructor(config: BoothConfig & EventHandler) {
     this.rootKey = config.rootKey ?? randomBytes(32).toString('hex')
@@ -49,6 +51,7 @@ export class Booth {
     this.stats = new StatsCollector()
 
     const defaultAmount = config.defaultInvoiceAmount ?? 1000
+    this.freeTier = config.freeTier ? new FreeTier(config.freeTier.requestsPerDay) : null
 
     // Wire stats collection while preserving user-provided callbacks
     const userOnPayment = config.onPayment
@@ -74,6 +77,7 @@ export class Booth {
       _meter: this.meter,
       _invoiceStore: this.invoiceStore,
       _rootKey: this.rootKey,
+      _freeTier: this.freeTier,
     })
 
     // Invoice status with content negotiation and HTML payment page
@@ -144,6 +148,24 @@ export class Booth {
       return c.json({ error: 'Stats only available from localhost' }, 403)
     }
     return c.json(this.stats.snapshot())
+  }
+
+  /** Reset free-tier counters for all IPs. */
+  resetFreeTier(): void {
+    this.freeTier?.reset()
+  }
+
+  /**
+   * Handler for POST /admin/reset-free-tier — resets free-tier counters.
+   * Restricted to localhost — returns 403 for requests from other IPs.
+   */
+  resetFreeTierHandler = async (c: Context): Promise<Response> => {
+    const forwarded = c.req.header('X-Forwarded-For')?.split(',')[0]?.trim()
+    if (forwarded && !isLoopback(forwarded)) {
+      return c.json({ error: 'Admin only available from localhost' }, 403)
+    }
+    this.resetFreeTier()
+    return c.json({ ok: true, message: 'Free-tier counters reset' })
   }
 
   close(): void {
