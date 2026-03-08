@@ -18,6 +18,7 @@ app.use('/*', cors({
 }))
 
 const booth = new Booth({
+  adapter: 'hono',
   backend,
   pricing: {
     '/route': 2,
@@ -30,7 +31,6 @@ const booth = new Booth({
   upstream: process.env.VALHALLA_URL ?? 'http://localhost:8002',
   defaultInvoiceAmount: parseInt(process.env.DEFAULT_INVOICE_SATS ?? '1000', 10),
   rootKey: process.env.ROOT_KEY,
-  dbPath: process.env.DB_PATH ?? './credits.db',
   creditTiers: [
     { amountSats: 1_000,   creditSats: 1_000,   label: 'Starter' },
     { amountSats: 10_000,  creditSats: 11_100,  label: 'Pro' },
@@ -45,10 +45,9 @@ const booth = new Booth({
   },
 })
 
-app.get('/invoice-status/:paymentHash', booth.invoiceStatusHandler)
-app.post('/create-invoice', booth.createInvoiceHandler)
-app.post('/admin/reset-free-tier', booth.resetFreeTierHandler)
-app.use('/*', booth.middleware)
+app.get('/invoice-status/:paymentHash', booth.invoiceStatusHandler as any)
+app.post('/create-invoice', booth.createInvoiceHandler as any)
+app.use('/*', booth.middleware as any)
 
 const port = parseInt(process.env.PORT ?? '3000', 10)
 serve({ fetch: app.fetch, port }, () => {
