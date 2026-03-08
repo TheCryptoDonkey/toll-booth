@@ -1,18 +1,19 @@
 {
   "name": "toll-booth",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "type": "module",
-  "description": "Drop-in L402 middleware — your API becomes a toll booth in minutes",
+  "description": "L402 Lightning payment middleware for any Node.js framework — Express, Hono, Deno, Bun",
   "license": "MIT",
   "exports": {
-    ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
-    },
-    "./backends/phoenixd": {
-      "import": "./dist/backends/phoenixd.js",
-      "types": "./dist/backends/phoenixd.d.ts"
-    }
+    ".": { "import": "./dist/index.js", "types": "./dist/index.d.ts" },
+    "./backends/phoenixd": { "import": "./dist/backends/phoenixd.js", "types": "./dist/backends/phoenixd.d.ts" },
+    "./backends/lnd": { "import": "./dist/backends/lnd.js", "types": "./dist/backends/lnd.d.ts" },
+    "./backends/alby": { "import": "./dist/backends/alby.js", "types": "./dist/backends/alby.d.ts" },
+    "./storage/sqlite": { "import": "./dist/storage/sqlite.js", "types": "./dist/storage/sqlite.d.ts" },
+    "./storage/memory": { "import": "./dist/storage/memory.js", "types": "./dist/storage/memory.d.ts" },
+    "./adapters/hono": { "import": "./dist/adapters/hono.js", "types": "./dist/adapters/hono.d.ts" },
+    "./adapters/express": { "import": "./dist/adapters/express.js", "types": "./dist/adapters/express.d.ts" },
+    "./adapters/web-standard": { "import": "./dist/adapters/web-standard.js", "types": "./dist/adapters/web-standard.d.ts" }
   },
   "files": [
     "dist"
@@ -24,9 +25,16 @@
   },
   "dependencies": {
     "better-sqlite3": "^11.8.0",
-    "hono": "^4.7.0",
     "macaroon": "^3.0.4",
     "qrcode": "^1.5.4"
+  },
+  "peerDependencies": {
+    "hono": "^4.0.0",
+    "express": "^4.0.0 || ^5.0.0"
+  },
+  "peerDependenciesMeta": {
+    "hono": { "optional": true },
+    "express": { "optional": true }
   },
   "devDependencies": {
     "@hono/node-server": "^1.19.9",
@@ -35,6 +43,7 @@
     "@types/qrcode": "^1.5.6",
     "@types/ws": "^8.18.1",
     "express": "^5.2.1",
+    "hono": "^4.7.0",
     "tsx": "^4.21.0",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
