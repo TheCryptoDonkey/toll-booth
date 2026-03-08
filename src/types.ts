@@ -164,3 +164,12 @@ export interface ChallengeEvent {
   endpoint: string
   amountSats: number
 }
+
+/**
+ * Optional event handlers for observing toll-booth lifecycle events.
+ */
+export type EventHandler = {
+  onPayment?: (event: PaymentEvent) => void
+  onRequest?: (event: RequestEvent) => void
+  onChallenge?: (event: ChallengeEvent) => void
+}

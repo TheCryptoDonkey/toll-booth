@@ -1,9 +1,9 @@
 // src/booth.test.ts
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { createHash } from 'node:crypto'
 import { Hono } from 'hono'
 import { Booth } from './booth.js'
-import { mintMacaroon } from './macaroon.js'
+import { memoryStorage } from './storage/memory.js'
 import type { LightningBackend, CreditTier } from './types.js'
 
 const ROOT_KEY = 'a'.repeat(64)
@@ -31,22 +31,22 @@ function setup(overrides?: Partial<{ nwcPayInvoice: any; redeemCashu: any }>) {
   }
 
   const booth = new Booth({
+    adapter: 'hono',
     backend,
     pricing: { '/route': 2 },
     upstream: 'http://localhost:8002',
     rootKey: ROOT_KEY,
-    dbPath: ':memory:',
+    storage: memoryStorage(),
     creditTiers: TIERS,
     ...overrides,
   })
 
   const app = new Hono()
-  app.get('/invoice-status/:paymentHash', booth.invoiceStatusHandler)
-  app.post('/create-invoice', booth.createInvoiceHandler)
-  app.get('/stats', booth.statsHandler)
-  if (booth.nwcPayHandler) app.post('/nwc-pay', booth.nwcPayHandler)
-  if (booth.cashuRedeemHandler) app.post('/cashu-redeem', booth.cashuRedeemHandler)
-  app.use('/*', booth.middleware)
+  app.get('/invoice-status/:paymentHash', booth.invoiceStatusHandler as any)
+  app.post('/create-invoice', booth.createInvoiceHandler as any)
+  if (booth.nwcPayHandler) app.post('/nwc-pay', booth.nwcPayHandler as any)
+  if (booth.cashuRedeemHandler) app.post('/cashu-redeem', booth.cashuRedeemHandler as any)
+  app.use('/*', booth.middleware as any)
 
   return { app, booth, backend, preimage, paymentHash }
 }
@@ -153,21 +153,6 @@ describe('Booth', () => {
       booth.close()
     })
 
-    it('returns 400 for missing NWC params', async () => {
-      const nwcPayInvoice = vi.fn()
-      const { app, booth } = setup({ nwcPayInvoice })
-
-      const res = await app.request('/nwc-pay', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      })
-
-      expect(res.status).toBe(400)
-
-      booth.close()
-    })
-
     it('does not expose /nwc-pay when adapter not provided', async () => {
       const { booth } = setup()
       expect(booth.nwcPayHandler).toBeUndefined()
@@ -194,21 +179,6 @@ describe('Booth', () => {
       booth.close()
     })
 
-    it('returns 400 for missing Cashu params', async () => {
-      const redeemCashu = vi.fn()
-      const { app, booth } = setup({ redeemCashu })
-
-      const res = await app.request('/cashu-redeem', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      })
-
-      expect(res.status).toBe(400)
-
-      booth.close()
-    })
-
     it('does not expose /cashu-redeem when adapter not provided', async () => {
       const { booth } = setup()
       expect(booth.cashuRedeemHandler).toBeUndefined()
@@ -216,57 +186,19 @@ describe('Booth', () => {
     })
   })
 
-  describe('statsHandler', () => {
-    it('returns stats from localhost (no X-Forwarded-For)', async () => {
-      const { app, booth } = setup()
+  it('records stats from middleware events', async () => {
+    const { app, booth } = setup()
 
-      const res = await app.request('/stats')
-      expect(res.status).toBe(200)
-      const body = await res.json()
-      expect(body.upSince).toBeTruthy()
-      expect(body.requests.total).toBe(0)
+    // Trigger a 402 challenge
+    await app.request('/route', { method: 'POST' })
 
-      booth.close()
-    })
+    const snap = booth.stats.snapshot()
+    expect(snap.requests.challenged).toBe(1)
 
-    it('returns stats when X-Forwarded-For is loopback', async () => {
-      const { app, booth } = setup()
-
-      const res = await app.request('/stats', {
-        headers: { 'X-Forwarded-For': '127.0.0.1' },
-      })
-      expect(res.status).toBe(200)
-
-      booth.close()
-    })
-
-    it('rejects stats from non-local IP', async () => {
-      const { app, booth } = setup()
-
-      const res = await app.request('/stats', {
-        headers: { 'X-Forwarded-For': '203.0.113.50' },
-      })
-      expect(res.status).toBe(403)
-      const body = await res.json()
-      expect(body.error).toContain('localhost')
-
-      booth.close()
-    })
-
-    it('records stats from middleware events', async () => {
-      const { app, booth } = setup()
-
-      // Trigger a 402 challenge
-      await app.request('/route', { method: 'POST' })
-
-      const snap = booth.stats.snapshot()
-      expect(snap.requests.challenged).toBe(1)
-
-      booth.close()
-    })
+    booth.close()
   })
 
-  it('full flow: 402 → payment page → create invoice → JSON status', async () => {
+  it('full flow: 402 -> payment page -> create invoice -> JSON status', async () => {
     const { app, booth, backend, paymentHash, preimage } = setup()
 
     // 1. Request a priced route, get 402

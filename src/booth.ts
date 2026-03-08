@@ -1,57 +1,61 @@
 // src/booth.ts
-import type { Context } from 'hono'
-import type { BoothConfig } from './types.js'
-import type { EventHandler } from './middleware.js'
-import { tollBooth } from './middleware.js'
-import { FreeTier } from './free-tier.js'
-import { invoiceStatus } from './invoice-status.js'
-import { createInvoiceHandler } from './create-invoice.js'
-import { CreditMeter } from './meter.js'
-import { InvoiceStore } from './invoice-store.js'
+import type { BoothConfig, EventHandler } from './types.js'
+import type { StorageBackend } from './storage/interface.js'
+import type { TollBoothEngine } from './core/toll-booth.js'
+import type { CreateInvoiceDeps } from './core/create-invoice.js'
+import type { InvoiceStatusDeps } from './core/invoice-status.js'
+import { createTollBooth } from './core/toll-booth.js'
+import { sqliteStorage } from './storage/sqlite.js'
 import { StatsCollector } from './stats.js'
 import { randomBytes } from 'node:crypto'
-import Database from 'better-sqlite3'
+
+import { createHonoMiddleware, createHonoInvoiceStatusHandler, createHonoCreateInvoiceHandler, createHonoNwcHandler, createHonoCashuHandler } from './adapters/hono.js'
+import { createExpressMiddleware, createExpressInvoiceStatusHandler, createExpressCreateInvoiceHandler } from './adapters/express.js'
+import { createWebStandardMiddleware, createWebStandardInvoiceStatusHandler, createWebStandardCreateInvoiceHandler } from './adapters/web-standard.js'
+
+export type AdapterType = 'hono' | 'express' | 'web-standard'
+
+export interface BoothOptions extends Omit<BoothConfig, 'dbPath'> {
+  adapter: AdapterType
+  storage?: StorageBackend
+}
 
 /**
  * Encapsulates the middleware, invoice-status handler, create-invoice handler,
  * and wallet adapter endpoints with shared internal state.
  *
+ * The `adapter` option selects the framework integration:
+ * - `'hono'` — Hono middleware and handlers
+ * - `'express'` — Express middleware and handlers
+ * - `'web-standard'` — Web Standards (Request/Response) handlers
+ *
  * ```typescript
- * const booth = new Booth(config)
+ * const booth = new Booth({ adapter: 'hono', ...config })
  * app.get('/invoice-status/:paymentHash', booth.invoiceStatusHandler)
  * app.post('/create-invoice', booth.createInvoiceHandler)
- * // Optional wallet adapter endpoints
- * if (config.nwcPayInvoice) app.post('/nwc-pay', booth.nwcPayHandler!)
- * if (config.redeemCashu) app.post('/cashu-redeem', booth.cashuRedeemHandler!)
  * app.use('/*', booth.middleware)
  * ```
  */
 export class Booth {
-  readonly middleware: ReturnType<typeof tollBooth>
-  readonly invoiceStatusHandler: ReturnType<typeof invoiceStatus>
-  readonly createInvoiceHandler: ReturnType<typeof createInvoiceHandler>
-  readonly nwcPayHandler?: (c: Context) => Promise<Response>
-  readonly cashuRedeemHandler?: (c: Context) => Promise<Response>
+  readonly middleware: unknown
+  readonly invoiceStatusHandler: unknown
+  readonly createInvoiceHandler: unknown
+  readonly nwcPayHandler?: unknown
+  readonly cashuRedeemHandler?: unknown
 
   /** Aggregate usage statistics. Resets on restart. */
   readonly stats: StatsCollector
 
-  private readonly db: Database.Database
-  private readonly meter: CreditMeter
-  private readonly invoiceStore: InvoiceStore
+  private readonly storage: StorageBackend
+  private readonly engine: TollBoothEngine
   private readonly rootKey: string
-  private readonly freeTier: FreeTier | null
 
-  constructor(config: BoothConfig & EventHandler) {
+  constructor(config: BoothOptions & EventHandler) {
     this.rootKey = config.rootKey ?? randomBytes(32).toString('hex')
-    this.db = new Database(config.dbPath ?? ':memory:')
-    this.db.pragma('journal_mode = WAL')
-    this.meter = new CreditMeter(this.db)
-    this.invoiceStore = new InvoiceStore(this.db)
+    this.storage = config.storage ?? sqliteStorage()
     this.stats = new StatsCollector()
 
     const defaultAmount = config.defaultInvoiceAmount ?? 1000
-    this.freeTier = config.freeTier ? new FreeTier(config.freeTier.requestsPerDay) : null
 
     // Wire stats collection while preserving user-provided callbacks
     const userOnPayment = config.onPayment
@@ -59,9 +63,15 @@ export class Booth {
     const userOnChallenge = config.onChallenge
     const stats = this.stats
 
-    // Middleware shares the same meter, invoice store, and root key
-    this.middleware = tollBooth({
-      ...config,
+    this.engine = createTollBooth({
+      backend: config.backend,
+      storage: this.storage,
+      pricing: config.pricing,
+      upstream: config.upstream,
+      defaultInvoiceAmount: defaultAmount,
+      rootKey: this.rootKey,
+      freeTier: config.freeTier,
+      creditTiers: config.creditTiers,
       onPayment: (event) => {
         stats.recordPayment(event)
         userOnPayment?.(event)
@@ -74,105 +84,59 @@ export class Booth {
         stats.recordChallenge(event)
         userOnChallenge?.(event)
       },
-      _meter: this.meter,
-      _invoiceStore: this.invoiceStore,
-      _rootKey: this.rootKey,
-      _freeTier: this.freeTier,
     })
 
-    // Invoice status with content negotiation and HTML payment page
-    this.invoiceStatusHandler = invoiceStatus({
+    const createInvoiceDeps: CreateInvoiceDeps = {
       backend: config.backend,
-      invoiceStore: this.invoiceStore,
-      meter: this.meter,
-      tiers: config.creditTiers,
-      nwcEnabled: !!config.nwcPayInvoice,
-      cashuEnabled: !!config.redeemCashu,
-    })
-
-    // Create invoice with tier support
-    this.createInvoiceHandler = createInvoiceHandler({
-      backend: config.backend,
-      invoiceStore: this.invoiceStore,
+      storage: this.storage,
       rootKey: this.rootKey,
       tiers: config.creditTiers ?? [],
       defaultAmount,
-    })
+    }
 
-    // NWC proxy endpoint (only if adapter provided)
-    if (config.nwcPayInvoice) {
-      const nwcPay = config.nwcPayInvoice
-      this.nwcPayHandler = async (c: Context) => {
-        try {
-          const { nwcUri, bolt11 } = await c.req.json<{ nwcUri: string; bolt11: string }>()
-          if (!nwcUri || !bolt11) {
-            return c.json({ error: 'nwcUri and bolt11 are required' }, 400)
-          }
-          const preimage = await nwcPay(nwcUri, bolt11)
-          stats.recordNwcPayment(defaultAmount)
-          return c.json({ preimage })
-        } catch (err) {
-          return c.json({ error: err instanceof Error ? err.message : 'NWC payment failed' }, 500)
+    const invoiceStatusDeps: InvoiceStatusDeps = {
+      backend: config.backend,
+      storage: this.storage,
+      tiers: config.creditTiers,
+      nwcEnabled: !!config.nwcPayInvoice,
+      cashuEnabled: !!config.redeemCashu,
+    }
+
+    const upstream = config.upstream.replace(/\/$/, '')
+
+    switch (config.adapter) {
+      case 'hono':
+        this.middleware = createHonoMiddleware({ engine: this.engine, upstream })
+        this.invoiceStatusHandler = createHonoInvoiceStatusHandler(invoiceStatusDeps)
+        this.createInvoiceHandler = createHonoCreateInvoiceHandler(createInvoiceDeps)
+        if (config.nwcPayInvoice) {
+          this.nwcPayHandler = createHonoNwcHandler(config.nwcPayInvoice)
         }
-      }
-    }
-
-    // Cashu redeem endpoint (only if adapter provided)
-    if (config.redeemCashu) {
-      const redeem = config.redeemCashu
-      const meter = this.meter
-      this.cashuRedeemHandler = async (c: Context) => {
-        try {
-          const { token, paymentHash } = await c.req.json<{ token: string; paymentHash: string }>()
-          if (!token || !paymentHash) {
-            return c.json({ error: 'token and paymentHash are required' }, 400)
-          }
-          const credited = await redeem(token, paymentHash)
-          meter.credit(paymentHash, credited)
-          stats.recordCashuRedemption(credited)
-          return c.json({ credited })
-        } catch (err) {
-          return c.json({ error: err instanceof Error ? err.message : 'Cashu redemption failed' }, 500)
+        if (config.redeemCashu) {
+          this.cashuRedeemHandler = createHonoCashuHandler(config.redeemCashu, this.storage)
         }
-      }
-    }
-  }
+        break
 
-  /**
-   * Handler for GET /stats — returns aggregate usage statistics as JSON.
-   * Restricted to localhost — returns 403 for requests from other IPs.
-   */
-  statsHandler = async (c: Context): Promise<Response> => {
-    const forwarded = c.req.header('X-Forwarded-For')?.split(',')[0]?.trim()
-    if (forwarded && !isLoopback(forwarded)) {
-      return c.json({ error: 'Stats only available from localhost' }, 403)
+      case 'express':
+        this.middleware = createExpressMiddleware(this.engine, upstream)
+        this.invoiceStatusHandler = createExpressInvoiceStatusHandler(invoiceStatusDeps)
+        this.createInvoiceHandler = createExpressCreateInvoiceHandler(createInvoiceDeps)
+        break
+
+      case 'web-standard':
+        this.middleware = createWebStandardMiddleware(this.engine, upstream)
+        this.invoiceStatusHandler = createWebStandardInvoiceStatusHandler(invoiceStatusDeps)
+        this.createInvoiceHandler = createWebStandardCreateInvoiceHandler(createInvoiceDeps)
+        break
     }
-    return c.json(this.stats.snapshot())
   }
 
   /** Reset free-tier counters for all IPs. */
   resetFreeTier(): void {
-    this.freeTier?.reset()
-  }
-
-  /**
-   * Handler for POST /admin/reset-free-tier — resets free-tier counters.
-   * Restricted to localhost — returns 403 for requests from other IPs.
-   */
-  resetFreeTierHandler = async (c: Context): Promise<Response> => {
-    const forwarded = c.req.header('X-Forwarded-For')?.split(',')[0]?.trim()
-    if (forwarded && !isLoopback(forwarded)) {
-      return c.json({ error: 'Admin only available from localhost' }, 403)
-    }
-    this.resetFreeTier()
-    return c.json({ ok: true, message: 'Free-tier counters reset' })
+    this.engine.freeTier?.reset()
   }
 
   close(): void {
-    this.db.close()
+    this.storage.close()
   }
-}
-
-function isLoopback(ip: string): boolean {
-  return ip === '127.0.0.1' || ip === '::1' || ip === 'localhost'
 }
