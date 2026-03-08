@@ -31,7 +31,9 @@
   "devDependencies": {
     "@hono/node-server": "^1.19.9",
     "@types/better-sqlite3": "^7.6.0",
+    "@types/express": "^5.0.6",
     "@types/qrcode": "^1.5.6",
+    "express": "^5.2.1",
     "tsx": "^4.21.0",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
