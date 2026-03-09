@@ -13,8 +13,8 @@ export class CreditMeter {
   private readonly stmtDebit: Database.Statement
   private readonly stmtBalance: Database.Statement
   private readonly stmtIsSettled: Database.Statement
-  private readonly stmtDeleteSettled!: Database.Statement
-  private readonly stmtDeleteCredits!: Database.Statement
+  private readonly stmtDeleteSettled: Database.Statement
+  private readonly stmtDeleteCredits: Database.Statement
   private readonly txCreditOnce!: (paymentHash: string, amountSats: number) => boolean
 
   constructor(db: Database.Database) {
