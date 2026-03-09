@@ -7,6 +7,7 @@
 //
 import { describe, it, expect } from 'vitest'
 import { phoenixdBackend } from './phoenixd.js'
+import { backendConformanceTests } from './conformance.js'
 
 const url = process.env.PHOENIXD_URL
 const password = process.env.PHOENIXD_PASSWORD
@@ -17,6 +18,8 @@ describe.skipIf(!hasCredentials)('phoenixd integration', () => {
   const backend = hasCredentials
     ? phoenixdBackend({ url, password })
     : null as unknown as ReturnType<typeof phoenixdBackend>
+
+  backendConformanceTests('phoenixd', () => backend)
 
   it('creates an invoice and checks its status', async () => {
     const invoice = await backend.createInvoice(1, 'integration test')
