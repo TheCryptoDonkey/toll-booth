@@ -123,6 +123,27 @@ export class CreditMeter {
     })()
   }
 
+  /**
+   * Remove credits with zero balance and their corresponding settlement records.
+   * Returns the number of rows deleted.
+   */
+  cleanupDrained(): number {
+    const hashes = this.db.prepare(
+      'SELECT payment_hash FROM credits WHERE balance = 0'
+    ).all() as { payment_hash: string }[]
+    if (hashes.length === 0) return 0
+
+    const tx = this.db.transaction(() => {
+      this.db.prepare('DELETE FROM credits WHERE balance = 0').run()
+      const del = this.db.prepare('DELETE FROM settled_invoices WHERE payment_hash = ?')
+      for (const { payment_hash } of hashes) {
+        del.run(payment_hash)
+      }
+    })
+    tx()
+    return hashes.length
+  }
+
   close(): void {
     this.db.close()
   }

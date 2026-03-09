@@ -260,6 +260,17 @@ export class Booth {
     }, allOk ? 200 : 503)
   }
 
+  /**
+   * Remove expired invoices and drained credits.
+   * Call periodically (e.g. daily) to prevent unbounded database growth.
+   * @param invoiceMaxAgeSecs - Max age for invoices (default: 86400 = 24 hours)
+   */
+  cleanup(invoiceMaxAgeSecs = 86_400): { invoicesRemoved: number; creditsRemoved: number } {
+    const invoicesRemoved = this.invoiceStore.cleanup(invoiceMaxAgeSecs)
+    const creditsRemoved = this.meter.cleanupDrained()
+    return { invoicesRemoved, creditsRemoved }
+  }
+
   close(): void {
     this.db.close()
   }

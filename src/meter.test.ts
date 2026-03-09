@@ -106,6 +106,37 @@ describe('CreditMeter', () => {
     })
   })
 
+  describe('cleanupDrained', () => {
+    it('removes zero-balance credits and their settlement records', () => {
+      const db = new Database(':memory:')
+      db.pragma('journal_mode = WAL')
+      const meter = new CreditMeter(db)
+
+      const hash = 'c'.repeat(64)
+      meter.creditOnce(hash, 10)
+      meter.debit(hash, 10) // drain to 0
+
+      const removed = meter.cleanupDrained()
+      expect(removed).toBe(1)
+      expect(meter.balance(hash)).toBe(0)
+      expect(meter.isSettled(hash)).toBe(false)
+    })
+
+    it('keeps credits with remaining balance', () => {
+      const db = new Database(':memory:')
+      db.pragma('journal_mode = WAL')
+      const meter = new CreditMeter(db)
+
+      const hash = 'd'.repeat(64)
+      meter.creditOnce(hash, 10)
+      meter.debit(hash, 5) // 5 remaining
+
+      const removed = meter.cleanupDrained()
+      expect(removed).toBe(0)
+      expect(meter.balance(hash)).toBe(5)
+    })
+  })
+
   describe('input validation', () => {
     it('rejects negative credit amounts', () => {
       expect(() => meter.credit('hash', -100)).toThrow(RangeError)
