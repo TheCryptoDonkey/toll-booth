@@ -12,6 +12,14 @@
     "./backends/phoenixd": {
       "import": "./dist/backends/phoenixd.js",
       "types": "./dist/backends/phoenixd.d.ts"
+    },
+    "./backends/lnd": {
+      "import": "./dist/backends/lnd.js",
+      "types": "./dist/backends/lnd.d.ts"
+    },
+    "./backends/cln": {
+      "import": "./dist/backends/cln.js",
+      "types": "./dist/backends/cln.d.ts"
     }
   },
   "files": [
