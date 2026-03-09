@@ -46,6 +46,7 @@ function setup(overrides?: Partial<{
   })
 
   const app = new Hono()
+  app.get('/health', booth.healthHandler)
   app.get('/invoice-status/:paymentHash', booth.invoiceStatusHandler)
   app.post('/create-invoice', booth.createInvoiceHandler)
   app.get('/stats', booth.statsHandler)
@@ -279,6 +280,42 @@ describe('Booth', () => {
 
       const snap = booth.stats.snapshot()
       expect(snap.requests.challenged).toBe(1)
+
+      booth.close()
+    })
+  })
+
+  describe('healthHandler', () => {
+    it('returns 200 with healthy status', async () => {
+      const { app, booth } = setup()
+
+      const res = await app.request('/health')
+      expect(res.status).toBe(200)
+      const body = await res.json()
+      expect(body.status).toBe('healthy')
+      expect(body.database).toBe('ok')
+      expect(body.upSince).toBeTruthy()
+
+      booth.close()
+    })
+
+    it('returns 503 when database is closed', async () => {
+      const { app, booth } = setup()
+
+      booth.close() // Close the database
+      const res = await app.request('/health')
+      expect(res.status).toBe(503)
+      const body = await res.json()
+      expect(body.status).toBe('degraded')
+      expect(body.database).toBe('unreachable')
+    })
+
+    it('requires no authentication', async () => {
+      const { app, booth } = setup({ adminToken: 'secret-token' })
+
+      // No auth headers — should still work
+      const res = await app.request('/health')
+      expect(res.status).toBe(200)
 
       booth.close()
     })

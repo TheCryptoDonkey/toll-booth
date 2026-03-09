@@ -5,3 +5,6 @@ dist/
 valhalla-tiles/
 .env
 .env.*
+*.db
+*.db-shm
+*.db-wal

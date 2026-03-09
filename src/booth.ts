@@ -45,6 +45,13 @@ export class Booth {
   private readonly adminToken?: string
 
   constructor(config: BoothConfig & EventHandler) {
+    if (!config.rootKey) {
+      console.error(
+        '[toll-booth] WARNING: No rootKey provided — using a random key. ' +
+        'All macaroons will be invalidated on restart. ' +
+        'Set rootKey to a persistent 32-byte hex string in production.',
+      )
+    }
     this.rootKey = config.rootKey ?? randomBytes(32).toString('hex')
     this.db = new Database(config.dbPath ?? './toll-booth.db')
     this.db.pragma('journal_mode = WAL')
@@ -171,8 +178,33 @@ export class Booth {
     return c.json({ ok: true, message: 'Free-tier counters reset' })
   }
 
+  /**
+   * Handler for GET /health — lightweight liveness check.
+   * Returns 200 with status, uptime, and database connectivity.
+   * No authentication required.
+   */
+  healthHandler = async (c: Context): Promise<Response> => {
+    const dbOk = this.checkDatabase()
+    const status = dbOk ? 'healthy' : 'degraded'
+    const code = dbOk ? 200 : 503
+    return c.json({
+      status,
+      upSince: this.stats.snapshot().upSince,
+      database: dbOk ? 'ok' : 'unreachable',
+    }, code)
+  }
+
   close(): void {
     this.db.close()
+  }
+
+  private checkDatabase(): boolean {
+    try {
+      this.db.pragma('integrity_check')
+      return true
+    } catch {
+      return false
+    }
   }
 
   private isAuthorisedAdmin(c: Context): boolean {
