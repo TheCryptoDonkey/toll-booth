@@ -28,6 +28,9 @@ src/
   stats.ts              # StatsCollector: in-memory usage analytics
   backends/
     phoenixd.ts         # Phoenixd Lightning backend (HTTP API)
+    lnd.ts              # LND Lightning backend (REST API)
+    cln.ts              # Core Lightning backend (clnrest API)
+    conformance.ts      # Shared backend conformance test factory
 
 examples/
   valhalla-proxy/       # Complete Docker Compose reference deployment
@@ -47,7 +50,7 @@ examples/
 
 **Persistence:** SQLite (better-sqlite3, WAL mode). Two tables: `credits` (balance ledger) + `invoices`.
 
-**Backends:** Phoenixd implemented. LND/Alby planned.
+**Backends:** Phoenixd, LND, and CLN implemented.
 
 **Volume discounts:** Credit tiers (e.g. pay 10k sats, get 11.1k credits).
 
@@ -67,6 +70,10 @@ examples/
 | `ADMIN_TOKEN` | — | Bearer token for `/stats` and `/admin/*` endpoints |
 | `TRUST_PROXY` | false | Trust `X-Forwarded-For` / `X-Real-IP` headers |
 | `PORT` | 3000 | HTTP listen port |
+| `LND_REST_URL` | — | LND REST endpoint (integration tests) |
+| `LND_MACAROON` | — | LND admin macaroon, hex (integration tests) |
+| `CLN_REST_URL` | — | CLN REST endpoint (integration tests) |
+| `CLN_RUNE` | — | CLN rune token (integration tests) |
 
 ## Conventions
 
