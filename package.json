@@ -20,7 +20,8 @@
   "scripts": {
     "build": "rm -rf dist && tsc",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build && npm test"
   },
   "dependencies": {
     "better-sqlite3": "^11.8.0",

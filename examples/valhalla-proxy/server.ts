@@ -56,6 +56,14 @@ app.post('/create-invoice', booth.createInvoiceHandler)
 app.post('/admin/reset-free-tier', booth.resetFreeTierHandler)
 app.use('/*', booth.middleware)
 
+// Hourly cleanup: remove expired invoices, drained credits, stale claims
+const cleanupTimer = setInterval(() => {
+  const result = booth.cleanup()
+  if (result.invoicesRemoved || result.creditsRemoved || result.staleClaimsRemoved) {
+    console.log(`[cleanup] invoices=${result.invoicesRemoved} credits=${result.creditsRemoved} staleClaims=${result.staleClaimsRemoved}`)
+  }
+}, 3_600_000)
+
 const port = parseInt(process.env.PORT ?? '3000', 10)
 const server = serve({ fetch: app.fetch, port }, () => {
   console.log(`routing proxy listening on :${port}`)
@@ -63,6 +71,7 @@ const server = serve({ fetch: app.fetch, port }, () => {
 
 function shutdown() {
   console.log('shutting down…')
+  clearInterval(cleanupTimer)
   server.close()
   booth.close()
   process.exit(0)

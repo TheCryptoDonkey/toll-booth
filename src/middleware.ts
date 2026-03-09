@@ -216,7 +216,6 @@ async function proxyUpstream(
       method: c.req.method,
       headers,
       body: c.req.method !== 'GET' && c.req.method !== 'HEAD' ? c.req.raw.body : undefined,
-      // @ts-expect-error duplex is required for streaming request body
       duplex: 'half',
       signal: AbortSignal.timeout(timeout),
     })

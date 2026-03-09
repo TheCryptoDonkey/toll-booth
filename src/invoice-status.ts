@@ -54,6 +54,7 @@ export function invoiceStatus(depsOrBackend: InvoiceStatusDeps | LightningBacken
           nwcEnabled: deps.nwcEnabled ?? false,
           cashuEnabled: deps.cashuEnabled ?? false,
         })
+        c.header('Content-Security-Policy', "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'")
         return c.html(html)
       }
 
