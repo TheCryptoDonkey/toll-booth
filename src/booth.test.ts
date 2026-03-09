@@ -566,6 +566,103 @@ describe('Booth', () => {
       booth.close()
     })
 
+    it('rejects and unsettles when adapter returns NaN', async () => {
+      const redeemCashu = vi.fn().mockResolvedValue(NaN)
+      const { app, booth, paymentHash } = setup({ redeemCashu })
+
+      await app.request('/route', { method: 'POST' })
+
+      const res = await app.request('/cashu-redeem', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: 'cashuA...', paymentHash }),
+      })
+
+      expect(res.status).toBe(502)
+      const body = await res.json()
+      expect(body.error).toContain('invalid amount')
+
+      // Settlement was rolled back — retry should be allowed
+      redeemCashu.mockResolvedValue(500)
+      const retry = await app.request('/cashu-redeem', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: 'cashuRetry...', paymentHash }),
+      })
+      expect(retry.status).toBe(200)
+
+      booth.close()
+    })
+
+    it('rejects and unsettles when adapter returns negative amount', async () => {
+      const redeemCashu = vi.fn().mockResolvedValue(-100)
+      const { app, booth, paymentHash } = setup({ redeemCashu })
+
+      await app.request('/route', { method: 'POST' })
+
+      const res = await app.request('/cashu-redeem', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: 'cashuA...', paymentHash }),
+      })
+
+      expect(res.status).toBe(502)
+
+      // Retry allowed after rollback
+      redeemCashu.mockResolvedValue(500)
+      const retry = await app.request('/cashu-redeem', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: 'cashuRetry...', paymentHash }),
+      })
+      expect(retry.status).toBe(200)
+
+      booth.close()
+    })
+
+    it('rejects and unsettles when adapter returns zero', async () => {
+      const redeemCashu = vi.fn().mockResolvedValue(0)
+      const { app, booth, paymentHash } = setup({ redeemCashu })
+
+      await app.request('/route', { method: 'POST' })
+
+      const res = await app.request('/cashu-redeem', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: 'cashuA...', paymentHash }),
+      })
+
+      expect(res.status).toBe(502)
+
+      booth.close()
+    })
+
+    it('rejects and unsettles when adapter returns a float', async () => {
+      const redeemCashu = vi.fn().mockResolvedValue(99.5)
+      const { app, booth, paymentHash } = setup({ redeemCashu })
+
+      await app.request('/route', { method: 'POST' })
+
+      const res = await app.request('/cashu-redeem', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: 'cashuA...', paymentHash }),
+      })
+
+      expect(res.status).toBe(502)
+
+      // Retry allowed after rollback
+      redeemCashu.mockResolvedValue(100)
+      const retry = await app.request('/cashu-redeem', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: 'cashuRetry...', paymentHash }),
+      })
+      expect(retry.status).toBe(200)
+
+      booth.close()
+    })
+
     it('does not expose /cashu-redeem when adapter not provided', async () => {
       const { booth } = setup()
       expect(booth.cashuRedeemHandler).toBeUndefined()

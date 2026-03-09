@@ -206,14 +206,28 @@ export class Booth {
             throw err // Re-throw to hit the outer catch block
           }
 
+          // Validate adapter output before touching the ledger
+          if (!Number.isInteger(credited) || credited < 1) {
+            meter.unsettle(paymentHash)
+            return c.json({
+              error: `Cashu adapter returned invalid amount: ${credited}`,
+            }, 502)
+          }
+
           // Reconcile if redeemed amount differs from the locked amount
-          if (credited !== stored.amountSats) {
-            const diff = credited - stored.amountSats
-            if (diff > 0) {
-              meter.credit(paymentHash, diff)
-            } else if (diff < 0) {
-              meter.debit(paymentHash, -diff)
+          try {
+            if (credited !== stored.amountSats) {
+              const diff = credited - stored.amountSats
+              if (diff > 0) {
+                meter.credit(paymentHash, diff)
+              } else if (diff < 0) {
+                meter.debit(paymentHash, -diff)
+              }
             }
+          } catch (err) {
+            // Reconciliation failed — roll back to prevent stale credit state
+            meter.unsettle(paymentHash)
+            throw err
           }
 
           stats.recordCashuRedemption(credited)
