@@ -67,6 +67,13 @@ export class Booth {
     this.invoiceStore = new InvoiceStore(this.db)
     this.stats = new StatsCollector()
     this.trustProxy = config.trustProxy ?? false
+
+    // Recover any Cashu redemptions that succeeded externally but
+    // crashed before the local credit was applied.
+    const recovered = this.meter.recoverPendingRedemptions()
+    if (recovered > 0) {
+      console.error(`[toll-booth] Recovered ${recovered} pending Cashu redemption(s) from previous crash`)
+    }
     this.adminToken = config.adminToken
 
     const defaultAmount = config.defaultInvoiceAmount ?? 1000
@@ -219,8 +226,10 @@ export class Booth {
             }, 502)
           }
 
-          // Claim already held — just credit the balance
-          meter.credit(paymentHash, credited)
+          // Write-ahead: persist redeemed amount before crediting.
+          // If we crash after this but before settle, recovery replays the credit.
+          meter.recordRedemption(paymentHash, credited)
+          meter.settleRedemption(paymentHash, credited)
           pending.delete(paymentHash)
 
           stats.recordCashuRedemption(credited)
@@ -278,14 +287,18 @@ export class Booth {
   }
 
   /**
-   * Remove expired invoices and drained credits.
+   * Remove expired invoices, drained credits, and stale redemption claims.
    * Call periodically (e.g. daily) to prevent unbounded database growth.
    * @param invoiceMaxAgeSecs - Max age for invoices (default: 86400 = 24 hours)
+   * @param claimMaxAgeSecs - Max age for orphaned claims (default: 3600 = 1 hour)
    */
-  cleanup(invoiceMaxAgeSecs = 86_400): { invoicesRemoved: number; creditsRemoved: number } {
+  cleanup(invoiceMaxAgeSecs = 86_400, claimMaxAgeSecs = 3_600): {
+    invoicesRemoved: number; creditsRemoved: number; staleClaimsRemoved: number
+  } {
     const invoicesRemoved = this.invoiceStore.cleanup(invoiceMaxAgeSecs)
     const creditsRemoved = this.meter.cleanupDrained()
-    return { invoicesRemoved, creditsRemoved }
+    const staleClaimsRemoved = this.meter.cleanupStaleClaims(claimMaxAgeSecs)
+    return { invoicesRemoved, creditsRemoved, staleClaimsRemoved }
   }
 
   close(): void {

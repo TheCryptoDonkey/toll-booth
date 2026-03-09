@@ -166,6 +166,133 @@ describe('CreditMeter', () => {
     })
   })
 
+  describe('recordRedemption + settleRedemption', () => {
+    it('records redeemed amount and settles atomically', () => {
+      const hash = 'redeem1'
+      meter.claim(hash)
+      meter.recordRedemption(hash, 500)
+      meter.settleRedemption(hash, 500)
+      expect(meter.balance(hash)).toBe(500)
+      expect(meter.isSettled(hash)).toBe(true)
+    })
+
+    it('settleRedemption is idempotent (safe to replay)', () => {
+      const hash = 'redeem2'
+      meter.claim(hash)
+      meter.recordRedemption(hash, 300)
+      meter.settleRedemption(hash, 300)
+      meter.settleRedemption(hash, 300) // replay
+      expect(meter.balance(hash)).toBe(300) // not doubled
+    })
+  })
+
+  describe('recoverPendingRedemptions', () => {
+    it('recovers credit after simulated crash (recorded but not settled)', () => {
+      const db = new Database(':memory:')
+      db.pragma('journal_mode = WAL')
+
+      // Simulate: claim + recordRedemption succeeded, then "crash" before settle
+      const meter1 = new CreditMeter(db)
+      meter1.claim('crash1')
+      meter1.recordRedemption('crash1', 750)
+      // meter1 "crashes" here — settleRedemption never called
+
+      // New meter instance on same DB (simulating restart)
+      const meter2 = new CreditMeter(db)
+      const recovered = meter2.recoverPendingRedemptions()
+      expect(recovered).toBe(1)
+      expect(meter2.balance('crash1')).toBe(750)
+    })
+
+    it('does not double-credit already settled redemptions', () => {
+      const db = new Database(':memory:')
+      db.pragma('journal_mode = WAL')
+
+      const meter1 = new CreditMeter(db)
+      meter1.claim('ok1')
+      meter1.recordRedemption('ok1', 500)
+      meter1.settleRedemption('ok1', 500)
+
+      const meter2 = new CreditMeter(db)
+      const recovered = meter2.recoverPendingRedemptions()
+      expect(recovered).toBe(0)
+      expect(meter2.balance('ok1')).toBe(500) // unchanged
+    })
+
+    it('skips claim-only rows (no redeemed amount)', () => {
+      const db = new Database(':memory:')
+      db.pragma('journal_mode = WAL')
+
+      const meter1 = new CreditMeter(db)
+      meter1.claim('pending1') // claim but redeem never completed
+
+      const meter2 = new CreditMeter(db)
+      const recovered = meter2.recoverPendingRedemptions()
+      expect(recovered).toBe(0)
+      expect(meter2.balance('pending1')).toBe(0)
+    })
+
+    it('skips non-Cashu settlements (creditOnce path)', () => {
+      const db = new Database(':memory:')
+      db.pragma('journal_mode = WAL')
+
+      const meter1 = new CreditMeter(db)
+      meter1.creditOnce('lightning1', 1000) // NWC/Lightning path
+
+      const meter2 = new CreditMeter(db)
+      const recovered = meter2.recoverPendingRedemptions()
+      expect(recovered).toBe(0)
+      expect(meter2.balance('lightning1')).toBe(1000) // unchanged
+    })
+  })
+
+  describe('cleanupStaleClaims', () => {
+    it('removes old claims without redeemed amount', () => {
+      const db = new Database(':memory:')
+      db.pragma('journal_mode = WAL')
+      const meter = new CreditMeter(db)
+
+      meter.claim('stale1')
+      // Backdate the claim to make it stale
+      db.prepare(
+        "UPDATE settled_invoices SET settled_at = datetime('now', '-2 hours') WHERE payment_hash = 'stale1'"
+      ).run()
+
+      const removed = meter.cleanupStaleClaims(3600) // 1 hour threshold
+      expect(removed).toBe(1)
+      expect(meter.isSettled('stale1')).toBe(false)
+      // Can be claimed again
+      expect(meter.claim('stale1')).toBe(true)
+    })
+
+    it('does not remove claims with redeemed amount', () => {
+      const db = new Database(':memory:')
+      db.pragma('journal_mode = WAL')
+      const meter = new CreditMeter(db)
+
+      meter.claim('redeemed1')
+      meter.recordRedemption('redeemed1', 500)
+      db.prepare(
+        "UPDATE settled_invoices SET settled_at = datetime('now', '-2 hours') WHERE payment_hash = 'redeemed1'"
+      ).run()
+
+      const removed = meter.cleanupStaleClaims(3600)
+      expect(removed).toBe(0)
+      expect(meter.isSettled('redeemed1')).toBe(true)
+    })
+
+    it('does not remove recent claims', () => {
+      const db = new Database(':memory:')
+      db.pragma('journal_mode = WAL')
+      const meter = new CreditMeter(db)
+
+      meter.claim('fresh1')
+      const removed = meter.cleanupStaleClaims(3600)
+      expect(removed).toBe(0)
+      expect(meter.isSettled('fresh1')).toBe(true)
+    })
+  })
+
   describe('input validation', () => {
     it('rejects negative credit amounts', () => {
       expect(() => meter.credit('hash', -100)).toThrow(RangeError)

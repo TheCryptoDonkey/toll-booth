@@ -815,6 +815,68 @@ describe('Booth', () => {
       try { unlinkSync(`${tmpDb}-wal`) } catch {}
       try { unlinkSync(`${tmpDb}-shm`) } catch {}
     })
+
+    it('recovers credit on restart after crash between redeem and settle', async () => {
+      const tmpDb = `/tmp/toll-booth-crash-${Date.now()}.db`
+      const { paymentHash } = makePreimageAndHash()
+
+      const backend: LightningBackend = {
+        createInvoice: vi.fn().mockResolvedValue({ bolt11: 'lnbc1000n1test...', paymentHash }),
+        checkInvoice: vi.fn().mockResolvedValue({ paid: false }),
+      }
+
+      // Instance 1: simulate claim + redeem + recordRedemption, then "crash" before settle
+      const booth1 = new Booth({
+        backend, pricing: { '/route': 2 }, upstream: 'http://localhost:8002',
+        rootKey: ROOT_KEY, dbPath: tmpDb,
+        redeemCashu: vi.fn().mockResolvedValue(500),
+      })
+      const app1 = new Hono()
+      app1.post('/cashu-redeem', booth1.cashuRedeemHandler!)
+      app1.use('/*', booth1.middleware)
+
+      // Store invoice
+      await app1.request('/route', { method: 'POST' })
+
+      // Simulate partial completion: claim + record redemption, but no settle
+      // We access the meter's internals via a fresh CreditMeter on the same DB
+      const Database = (await import('better-sqlite3')).default
+      const rawDb = new Database(tmpDb)
+      rawDb.pragma('journal_mode = WAL')
+      const { CreditMeter } = await import('./meter.js')
+      const rawMeter = new CreditMeter(rawDb)
+      rawMeter.claim(paymentHash)
+      rawMeter.recordRedemption(paymentHash, 500)
+      // Deliberately skip settleRedemption — simulating crash
+      rawDb.close()
+      booth1.close()
+
+      // Instance 2: new Booth on same DB — should auto-recover
+      const booth2 = new Booth({
+        backend, pricing: { '/route': 2 }, upstream: 'http://localhost:8002',
+        rootKey: ROOT_KEY, dbPath: tmpDb,
+        redeemCashu: vi.fn(),
+      })
+      const app2 = new Hono()
+      app2.use('/*', booth2.middleware)
+
+      // The recovered credit should be usable via L402
+      // Get the macaroon from the invoice store (created by booth1)
+      const challengeRes = await app2.request('/route', { method: 'POST' })
+      const challengeBody = await challengeRes.json()
+      const authRes = await app2.request('/route', {
+        method: 'POST',
+        headers: { 'Authorization': `L402 ${challengeBody.macaroon}:settled` },
+      })
+      // Should NOT be 402 — credit was recovered
+      expect(authRes.status).not.toBe(402)
+
+      booth2.close()
+      const { unlinkSync } = await import('node:fs')
+      try { unlinkSync(tmpDb) } catch {}
+      try { unlinkSync(`${tmpDb}-wal`) } catch {}
+      try { unlinkSync(`${tmpDb}-shm`) } catch {}
+    })
   })
 
   describe('statsHandler', () => {

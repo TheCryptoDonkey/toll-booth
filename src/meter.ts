@@ -15,7 +15,10 @@ export class CreditMeter {
   private readonly stmtIsSettled: Database.Statement
   private readonly stmtDeleteSettled: Database.Statement
   private readonly stmtDeleteCredits: Database.Statement
+  private readonly stmtRecordRedemption: Database.Statement
+  private readonly stmtMarkCreditApplied: Database.Statement
   private readonly txCreditOnce!: (paymentHash: string, amountSats: number) => boolean
+  private readonly txSettleRedemption!: (paymentHash: string, amountSats: number) => void
 
   constructor(db: Database.Database) {
     this.db = db
@@ -30,9 +33,15 @@ export class CreditMeter {
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS settled_invoices (
         payment_hash TEXT PRIMARY KEY,
-        settled_at TEXT NOT NULL DEFAULT (datetime('now'))
+        settled_at TEXT NOT NULL DEFAULT (datetime('now')),
+        redeemed_amount INTEGER,
+        credit_applied INTEGER NOT NULL DEFAULT 0
       )
     `)
+    // Migration: add columns if upgrading from older schema
+    try { this.db.exec('ALTER TABLE settled_invoices ADD COLUMN redeemed_amount INTEGER') } catch { /* already exists */ }
+    try { this.db.exec('ALTER TABLE settled_invoices ADD COLUMN credit_applied INTEGER NOT NULL DEFAULT 0') } catch { /* already exists */ }
+
     this.stmtCredit = this.db.prepare(`
       INSERT INTO credits (payment_hash, balance)
       VALUES (?, ?)
@@ -60,11 +69,26 @@ export class CreditMeter {
     this.stmtDeleteCredits = this.db.prepare(
       'DELETE FROM credits WHERE payment_hash = ?'
     )
+    this.stmtRecordRedemption = this.db.prepare(
+      'UPDATE settled_invoices SET redeemed_amount = ? WHERE payment_hash = ?'
+    )
+    this.stmtMarkCreditApplied = this.db.prepare(
+      'UPDATE settled_invoices SET credit_applied = 1 WHERE payment_hash = ?'
+    )
     this.txCreditOnce = this.db.transaction((paymentHash: string, amountSats: number): boolean => {
       const marked = this.stmtMarkSettled.run(paymentHash)
       if (marked.changes === 0) return false
       this.stmtCredit.run(paymentHash, amountSats)
       return true
+    })
+    this.txSettleRedemption = this.db.transaction((paymentHash: string, amountSats: number): void => {
+      // Skip if already settled (idempotent for crash recovery replay)
+      const row = this.db.prepare(
+        'SELECT credit_applied FROM settled_invoices WHERE payment_hash = ?'
+      ).get(paymentHash) as { credit_applied: number } | undefined
+      if (row?.credit_applied === 1) return
+      this.stmtCredit.run(paymentHash, amountSats)
+      this.stmtMarkCreditApplied.run(paymentHash)
     })
   }
 
@@ -79,12 +103,63 @@ export class CreditMeter {
    * Claims a payment hash for redemption without crediting.
    * Returns true only on the first successful claim — acts as a
    * cross-instance distributed lock via the `settled_invoices` table.
-   * Call `credit()` after the external operation succeeds, or
-   * `unsettle()` to release the claim on failure.
+   * Call `recordRedemption()` + `settleRedemption()` after the external
+   * operation succeeds, or `unsettle()` to release the claim on failure.
    */
   claim(paymentHash: string): boolean {
     const result = this.stmtMarkSettled.run(paymentHash)
     return result.changes > 0
+  }
+
+  /**
+   * Write-ahead: persist the redeemed amount immediately after the
+   * external redemption succeeds. If the process crashes before
+   * `settleRedemption()`, recovery can replay the credit using
+   * this recorded amount.
+   */
+  recordRedemption(paymentHash: string, amountSats: number): void {
+    this.stmtRecordRedemption.run(amountSats, paymentHash)
+  }
+
+  /**
+   * Atomically credit the balance and mark the redemption as complete.
+   * Idempotent: safe to call multiple times (for crash recovery replay).
+   */
+  settleRedemption(paymentHash: string, amountSats: number): void {
+    this.txSettleRedemption(paymentHash, amountSats)
+  }
+
+  /**
+   * Find settled_invoices rows where the external redemption succeeded
+   * (redeemed_amount recorded) but the credit was never applied
+   * (process crashed). Replays the credit for each.
+   * Returns the number of recovered redemptions.
+   */
+  recoverPendingRedemptions(): number {
+    const rows = this.db.prepare(
+      'SELECT payment_hash, redeemed_amount FROM settled_invoices WHERE redeemed_amount IS NOT NULL AND credit_applied = 0'
+    ).all() as { payment_hash: string; redeemed_amount: number }[]
+    for (const { payment_hash, redeemed_amount } of rows) {
+      this.txSettleRedemption(payment_hash, redeemed_amount)
+    }
+    return rows.length
+  }
+
+  /**
+   * Remove stale claims that never completed redemption (no redeemed_amount).
+   * These are claims where the process crashed during the external redeem()
+   * call or the redeem itself failed without cleanup.
+   * @param maxAgeSecs — only remove claims older than this (default: 3600 = 1 hour)
+   * Returns the number of stale claims removed.
+   */
+  cleanupStaleClaims(maxAgeSecs = 3600): number {
+    const result = this.db.prepare(
+      `DELETE FROM settled_invoices
+       WHERE redeemed_amount IS NULL
+         AND credit_applied = 0
+         AND settled_at <= datetime('now', '-' || ? || ' seconds')`
+    ).run(maxAgeSecs)
+    return result.changes
   }
 
   /**
