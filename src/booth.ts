@@ -51,18 +51,13 @@ export class Booth {
   private readonly rootKey: string
 
   constructor(config: BoothOptions & EventHandler) {
-    this.rootKey = config.rootKey ?? randomBytes(32).toString('hex')
+    const rootKeyInput = config.rootKey ?? randomBytes(32).toString('hex')
+    if (!/^[0-9a-fA-F]{64}$/.test(rootKeyInput)) {
+      throw new Error('rootKey must be exactly 64 hex characters (32 bytes)')
+    }
+    this.rootKey = rootKeyInput
     this.storage = config.storage ?? sqliteStorage()
     this.stats = new StatsCollector()
-    this.trustProxy = config.trustProxy ?? false
-
-    // Recover any Cashu redemptions that succeeded externally but
-    // crashed before the local credit was applied.
-    const recovered = this.meter.recoverPendingRedemptions()
-    if (recovered > 0) {
-      console.error(`[toll-booth] Recovered ${recovered} pending Cashu redemption(s) from previous crash`)
-    }
-    this.adminToken = config.adminToken
 
     const defaultAmount = config.defaultInvoiceAmount ?? 1000
 
@@ -145,80 +140,7 @@ export class Booth {
     this.engine.freeTier?.reset()
   }
 
-  /**
-   * Handler for GET /health — lightweight liveness check.
-   * Returns 200 with status, uptime, and database connectivity.
-   * No authentication required.
-   */
-  healthHandler = async (c: Context): Promise<Response> => {
-    const dbOk = this.checkDatabase()
-    const lnOk = await this.checkLightning()
-    const allOk = dbOk && lnOk
-    return c.json({
-      status: allOk ? 'healthy' : 'degraded',
-      upSince: this.stats.snapshot().upSince,
-      database: dbOk ? 'ok' : 'unreachable',
-      lightning: lnOk ? 'ok' : 'unreachable',
-    }, allOk ? 200 : 503)
-  }
-
-  /**
-   * Remove expired invoices, drained credits, and stale redemption claims.
-   * Call periodically (e.g. daily) to prevent unbounded database growth.
-   * @param invoiceMaxAgeSecs - Max age for invoices (default: 86400 = 24 hours)
-   * @param claimMaxAgeSecs - Max age for orphaned claims (default: 3600 = 1 hour)
-   */
-  cleanup(invoiceMaxAgeSecs = 86_400, claimMaxAgeSecs = 3_600): {
-    invoicesRemoved: number; creditsRemoved: number; staleClaimsRemoved: number
-  } {
-    const invoicesRemoved = this.invoiceStore.cleanup(invoiceMaxAgeSecs)
-    const creditsRemoved = this.meter.cleanupDrained()
-    const staleClaimsRemoved = this.meter.cleanupStaleClaims(claimMaxAgeSecs)
-    return { invoicesRemoved, creditsRemoved, staleClaimsRemoved }
-  }
-
   close(): void {
     this.storage.close()
-  }
-
-  private async checkLightning(): Promise<boolean> {
-    try {
-      await this.backend.checkInvoice('0'.repeat(64))
-      return true
-    } catch {
-      return false
-    }
-  }
-
-  private checkDatabase(): boolean {
-    try {
-      this.db.prepare('SELECT 1').get()
-      return true
-    } catch {
-      return false
-    }
-  }
-
-  private isAuthorisedAdmin(c: Context): boolean {
-    if (this.adminToken) {
-      const auth = c.req.header('Authorization')
-      if (auth?.startsWith('Bearer ')) {
-        return safeEqual(auth.slice(7).trim(), this.adminToken)
-      }
-      return safeEqual(c.req.header('X-Admin-Token') ?? '', this.adminToken)
-    }
-
-    const ip = getTrustedClientIp(c, this.trustProxy)
-    return ip !== null && isLoopback(ip)
-  }
-
-  private adminErrorMessage(): string {
-    if (this.adminToken) {
-      return 'Invalid or missing admin token'
-    }
-    if (!this.trustProxy) {
-      return 'Admin endpoints require adminToken or trustProxy=true with a trusted reverse proxy'
-    }
-    return 'Admin only available from localhost'
   }
 }

@@ -1,6 +1,7 @@
 // src/adapters/web-standard.ts
 import type { TollBoothEngine } from '../core/toll-booth.js'
 import type { CreateInvoiceDeps } from '../core/create-invoice.js'
+import type { CreateInvoiceRequest } from '../core/types.js'
 import type { InvoiceStatusDeps } from '../core/invoice-status.js'
 import { handleCreateInvoice } from '../core/create-invoice.js'
 import { handleInvoiceStatus, renderInvoiceStatusHtml } from '../core/invoice-status.js'
@@ -127,7 +128,7 @@ export function createWebStandardCreateInvoiceHandler(
   deps: CreateInvoiceDeps,
 ): WebStandardHandler {
   return async (req: Request): Promise<Response> => {
-    const body = await req.json().catch(() => ({}))
+    const body = await req.json().catch(() => ({})) as CreateInvoiceRequest
     const result = await handleCreateInvoice(deps, body)
 
     if (!result.success) {

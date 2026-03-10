@@ -86,7 +86,7 @@ export function createHonoInvoiceStatusHandler(
   deps: InvoiceStatusDeps,
 ): (c: Context) => Promise<Response> {
   return async (c) => {
-    const paymentHash = c.req.param('paymentHash')
+    const paymentHash = c.req.param('paymentHash') ?? ''
     const accept = c.req.header('Accept') ?? ''
 
     try {
