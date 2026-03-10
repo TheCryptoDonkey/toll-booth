@@ -1,7 +1,7 @@
 // src/payment-page.ts
 import QRCode from 'qrcode'
 import type { CreditTier } from './types.js'
-import type { StoredInvoice } from './invoice-store.js'
+import type { StoredInvoice } from './storage/interface.js'
 
 export interface PaymentPageData {
   invoice: StoredInvoice

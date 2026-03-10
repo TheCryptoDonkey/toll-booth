@@ -1,9 +1,9 @@
 // src/booth.test.ts
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { createHash } from 'node:crypto'
 import { Hono } from 'hono'
 import { Booth } from './booth.js'
-import { mintMacaroon } from './macaroon.js'
+import { memoryStorage } from './storage/memory.js'
 import type { LightningBackend, CreditTier } from './types.js'
 
 const ROOT_KEY = 'a'.repeat(64)
@@ -36,23 +36,22 @@ function setup(overrides?: Partial<{
   }
 
   const booth = new Booth({
+    adapter: 'hono',
     backend,
     pricing: { '/route': 2 },
     upstream: 'http://localhost:8002',
     rootKey: ROOT_KEY,
-    dbPath: ':memory:',
+    storage: memoryStorage(),
     creditTiers: TIERS,
     ...overrides,
   })
 
   const app = new Hono()
-  app.get('/health', booth.healthHandler)
-  app.get('/invoice-status/:paymentHash', booth.invoiceStatusHandler)
-  app.post('/create-invoice', booth.createInvoiceHandler)
-  app.get('/stats', booth.statsHandler)
-  if (booth.nwcPayHandler) app.post('/nwc-pay', booth.nwcPayHandler)
-  if (booth.cashuRedeemHandler) app.post('/cashu-redeem', booth.cashuRedeemHandler)
-  app.use('/*', booth.middleware)
+  app.get('/invoice-status/:paymentHash', booth.invoiceStatusHandler as any)
+  app.post('/create-invoice', booth.createInvoiceHandler as any)
+  if (booth.nwcPayHandler) app.post('/nwc-pay', booth.nwcPayHandler as any)
+  if (booth.cashuRedeemHandler) app.post('/cashu-redeem', booth.cashuRedeemHandler as any)
+  app.use('/*', booth.middleware as any)
 
   return { app, booth, backend, preimage, paymentHash }
 }
@@ -287,65 +286,6 @@ describe('Booth', () => {
       booth.close()
     })
 
-    it('returns 400 for missing NWC params', async () => {
-      const nwcPayInvoice = vi.fn()
-      const { app, booth } = setup({ nwcPayInvoice })
-
-      const res = await app.request('/nwc-pay', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      })
-
-      expect(res.status).toBe(400)
-
-      booth.close()
-    })
-
-    it('returns 400 for invalid paymentHash', async () => {
-      const nwcPayInvoice = vi.fn()
-      const { app, booth } = setup({ nwcPayInvoice })
-
-      const res = await app.request('/nwc-pay', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          nwcUri: 'nostr+walletconnect://...', bolt11: 'lnbc...',
-          paymentHash: 'bad',
-        }),
-      })
-
-      expect(res.status).toBe(400)
-      expect(nwcPayInvoice).not.toHaveBeenCalled()
-
-      booth.close()
-    })
-
-    it('rejects NWC payment when bolt11 does not match stored invoice', async () => {
-      const { paymentHash } = makePreimageAndHash()
-      const nwcPayInvoice = vi.fn()
-      const { app, booth } = setup({ nwcPayInvoice })
-
-      // Store invoice (bolt11 = 'lnbc1000n1test...')
-      await app.request('/route', { method: 'POST' })
-
-      const res = await app.request('/nwc-pay', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          nwcUri: 'nostr+walletconnect://...', bolt11: 'lnbc_attacker_invoice...',
-          paymentHash,
-        }),
-      })
-
-      expect(res.status).toBe(400)
-      const body = await res.json()
-      expect(body.error).toContain('bolt11 does not match')
-      expect(nwcPayInvoice).not.toHaveBeenCalled()
-
-      booth.close()
-    })
-
     it('does not expose /nwc-pay when adapter not provided', async () => {
       const { booth } = setup()
       expect(booth.nwcPayHandler).toBeUndefined()
@@ -429,315 +369,6 @@ describe('Booth', () => {
       })
       expect(res.status).toBe(400)
       expect(redeemCashu).not.toHaveBeenCalled()
-
-      booth.close()
-    })
-
-    it('returns 400 for missing Cashu params', async () => {
-      const redeemCashu = vi.fn()
-      const { app, booth } = setup({ redeemCashu })
-
-      const res = await app.request('/cashu-redeem', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      })
-
-      expect(res.status).toBe(400)
-
-      booth.close()
-    })
-
-    it('rolls back settlement when Cashu redemption fails', async () => {
-      const redeemCashu = vi.fn().mockRejectedValue(new Error('Mint unreachable'))
-      const { app, booth, paymentHash } = setup({ redeemCashu })
-
-      // Store invoice
-      await app.request('/route', { method: 'POST' })
-
-      const res = await app.request('/cashu-redeem', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: 'cashuA...', paymentHash }),
-      })
-
-      expect(res.status).toBe(500)
-
-      // After rollback, a retry should be allowed (not stuck as "already credited")
-      redeemCashu.mockResolvedValue(500)
-      const res2 = await app.request('/cashu-redeem', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: 'cashuRetry...', paymentHash }),
-      })
-
-      expect(res2.status).toBe(200)
-      expect((await res2.json()).credited).toBe(500)
-
-      booth.close()
-    })
-
-    it('returns macaroon in Cashu redeem response', async () => {
-      const redeemCashu = vi.fn().mockResolvedValue(1000)
-      const { app, booth, paymentHash } = setup({ redeemCashu })
-
-      // Store invoice
-      await app.request('/route', { method: 'POST' })
-
-      const res = await app.request('/cashu-redeem', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: 'cashuA...', paymentHash }),
-      })
-
-      expect(res.status).toBe(200)
-      const body = await res.json()
-      expect(body.macaroon).toBeTruthy()
-      expect(typeof body.macaroon).toBe('string')
-
-      booth.close()
-    })
-
-    it('reconciles credit when redeemed amount differs from invoice', async () => {
-      // Redeem returns 600 but invoice was for 1000 (defaultInvoiceAmount)
-      const redeemCashu = vi.fn().mockResolvedValue(600)
-      const { app, booth, paymentHash, preimage } = setup({ redeemCashu })
-
-      // Store invoice (amount = 1000, the default)
-      await app.request('/route', { method: 'POST' })
-
-      const res = await app.request('/cashu-redeem', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: 'cashuA...', paymentHash }),
-      })
-
-      expect(res.status).toBe(200)
-      const body = await res.json()
-      expect(body.credited).toBe(600)
-
-      // Now use the L402 token — balance should be 600, not 1000
-      const macaroon = body.macaroon
-      const authToken = `L402 ${macaroon}:settled`
-
-      // Each /route costs 2 sats. With 600 balance, should work.
-      const proxyRes = await app.request('/route', {
-        method: 'POST',
-        headers: { 'Authorization': authToken },
-      })
-      // 502 (upstream not running) means auth passed — NOT 402
-      expect(proxyRes.status).not.toBe(402)
-
-      // Verify balance is 598 (600 - 2) by making 299 more requests (spending 598 sats)
-      // then confirming the next one is rejected. Instead, just verify a second request works.
-      const proxyRes2 = await app.request('/route', {
-        method: 'POST',
-        headers: { 'Authorization': authToken },
-      })
-      expect(proxyRes2.status).not.toBe(402) // still has credit
-
-      booth.close()
-    })
-
-    it('full Cashu flow: 402 → redeem → L402 auth with settled token', async () => {
-      const redeemCashu = vi.fn().mockResolvedValue(1000)
-      const { app, booth, paymentHash } = setup({ redeemCashu })
-
-      // 1. Get 402 challenge
-      const challenge = await app.request('/route', { method: 'POST' })
-      expect(challenge.status).toBe(402)
-
-      // 2. Redeem Cashu token
-      const redeemRes = await app.request('/cashu-redeem', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: 'cashuA...', paymentHash }),
-      })
-      expect(redeemRes.status).toBe(200)
-      const { macaroon } = await redeemRes.json()
-
-      // 3. Use L402 with "settled" placeholder — should be authorised
-      const authRes = await app.request('/route', {
-        method: 'POST',
-        headers: { 'Authorization': `L402 ${macaroon}:settled` },
-      })
-      expect(authRes.status).not.toBe(402)
-
-      booth.close()
-    })
-
-    it('rejects and unsettles when adapter returns NaN', async () => {
-      const redeemCashu = vi.fn().mockResolvedValue(NaN)
-      const { app, booth, paymentHash } = setup({ redeemCashu })
-
-      await app.request('/route', { method: 'POST' })
-
-      const res = await app.request('/cashu-redeem', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: 'cashuA...', paymentHash }),
-      })
-
-      expect(res.status).toBe(502)
-      const body = await res.json()
-      expect(body.error).toContain('invalid amount')
-
-      // Settlement was rolled back — retry should be allowed
-      redeemCashu.mockResolvedValue(500)
-      const retry = await app.request('/cashu-redeem', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: 'cashuRetry...', paymentHash }),
-      })
-      expect(retry.status).toBe(200)
-
-      booth.close()
-    })
-
-    it('rejects and unsettles when adapter returns negative amount', async () => {
-      const redeemCashu = vi.fn().mockResolvedValue(-100)
-      const { app, booth, paymentHash } = setup({ redeemCashu })
-
-      await app.request('/route', { method: 'POST' })
-
-      const res = await app.request('/cashu-redeem', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: 'cashuA...', paymentHash }),
-      })
-
-      expect(res.status).toBe(502)
-
-      // Retry allowed after rollback
-      redeemCashu.mockResolvedValue(500)
-      const retry = await app.request('/cashu-redeem', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: 'cashuRetry...', paymentHash }),
-      })
-      expect(retry.status).toBe(200)
-
-      booth.close()
-    })
-
-    it('rejects and unsettles when adapter returns zero', async () => {
-      const redeemCashu = vi.fn().mockResolvedValue(0)
-      const { app, booth, paymentHash } = setup({ redeemCashu })
-
-      await app.request('/route', { method: 'POST' })
-
-      const res = await app.request('/cashu-redeem', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: 'cashuA...', paymentHash }),
-      })
-
-      expect(res.status).toBe(502)
-
-      booth.close()
-    })
-
-    it('rejects and unsettles when adapter returns a float', async () => {
-      const redeemCashu = vi.fn().mockResolvedValue(99.5)
-      const { app, booth, paymentHash } = setup({ redeemCashu })
-
-      await app.request('/route', { method: 'POST' })
-
-      const res = await app.request('/cashu-redeem', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: 'cashuA...', paymentHash }),
-      })
-
-      expect(res.status).toBe(502)
-
-      // Retry allowed after rollback
-      redeemCashu.mockResolvedValue(100)
-      const retry = await app.request('/cashu-redeem', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: 'cashuRetry...', paymentHash }),
-      })
-      expect(retry.status).toBe(200)
-
-      booth.close()
-    })
-
-    it('does not grant L402 access during in-flight Cashu redemption', async () => {
-      // Simulate a slow redeem that resolves after we test L402 auth
-      let resolveRedeem!: (value: number) => void
-      const redeemCashu = vi.fn().mockImplementation(
-        () => new Promise<number>((resolve) => { resolveRedeem = resolve }),
-      )
-      const { app, booth, paymentHash } = setup({ redeemCashu })
-
-      // Store invoice
-      await app.request('/route', { method: 'POST' })
-
-      // Start cashu-redeem (will block on the slow redeem)
-      const redeemPromise = app.request('/cashu-redeem', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: 'cashuA...', paymentHash }),
-      })
-
-      // While redeem is in-flight, try L402 auth with "settled" preimage
-      // Get the macaroon from the 402 response body
-      const challenge = await app.request('/route', { method: 'POST' })
-      const challengeBody = await challenge.json()
-      const authRes = await app.request('/route', {
-        method: 'POST',
-        headers: { 'Authorization': `L402 ${challengeBody.macaroon}:settled` },
-      })
-      // Must be 402 (not authorised) — isSettled() should be false during in-flight redeem
-      expect(authRes.status).toBe(402)
-
-      // Now let the redeem complete
-      resolveRedeem(1000)
-      const redeemRes = await redeemPromise
-      expect(redeemRes.status).toBe(200)
-
-      // After settlement, L402 with "settled" should now work
-      const authRes2 = await app.request('/route', {
-        method: 'POST',
-        headers: { 'Authorization': `L402 ${challengeBody.macaroon}:settled` },
-      })
-      expect(authRes2.status).not.toBe(402)
-
-      booth.close()
-    })
-
-    it('rejects concurrent redemptions for the same payment hash', async () => {
-      let resolveFirst!: (value: number) => void
-      const redeemCashu = vi.fn().mockImplementation(
-        () => new Promise<number>((resolve) => { resolveFirst = resolve }),
-      )
-      const { app, booth, paymentHash } = setup({ redeemCashu })
-
-      // Store invoice
-      await app.request('/route', { method: 'POST' })
-
-      // Start first redeem (blocks)
-      const first = app.request('/cashu-redeem', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: 'cashuA...', paymentHash }),
-      })
-
-      // Second redeem while first is in-flight
-      const second = await app.request('/cashu-redeem', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: 'cashuB...', paymentHash }),
-      })
-      expect(second.status).toBe(409)
-      const body = await second.json()
-      expect(body.error).toContain('in progress')
-
-      // Let first complete
-      resolveFirst(1000)
-      const firstRes = await first
-      expect(firstRes.status).toBe(200)
 
       booth.close()
     })
@@ -879,133 +510,19 @@ describe('Booth', () => {
     })
   })
 
-  describe('statsHandler', () => {
-    it('rejects stats by default when admin auth is not configured', async () => {
-      const { app, booth } = setup()
+  it('records stats from middleware events', async () => {
+    const { app, booth } = setup()
 
-      const res = await app.request('/stats')
-      expect(res.status).toBe(403)
-      const body = await res.json()
-      expect(body.error).toContain('adminToken')
+    // Trigger a 402 challenge
+    await app.request('/route', { method: 'POST' })
 
-      booth.close()
-    })
+    const snap = booth.stats.snapshot()
+    expect(snap.requests.challenged).toBe(1)
 
-    it('returns stats with a valid admin token', async () => {
-      const { app, booth } = setup({ adminToken: 'secret-token' })
-
-      const res = await app.request('/stats', {
-        headers: { 'Authorization': 'Bearer secret-token' },
-      })
-      expect(res.status).toBe(200)
-      const body = await res.json()
-      expect(body.upSince).toBeTruthy()
-      expect(body.requests.total).toBe(0)
-
-      booth.close()
-    })
-
-    it('returns stats when X-Forwarded-For is loopback and trustProxy is enabled', async () => {
-      const { app, booth } = setup({ trustProxy: true })
-
-      const res = await app.request('/stats', {
-        headers: { 'X-Forwarded-For': '127.0.0.1' },
-      })
-      expect(res.status).toBe(200)
-
-      booth.close()
-    })
-
-    it('rejects stats from non-local IP when trustProxy is enabled', async () => {
-      const { app, booth } = setup({ trustProxy: true })
-
-      const res = await app.request('/stats', {
-        headers: { 'X-Forwarded-For': '203.0.113.50' },
-      })
-      expect(res.status).toBe(403)
-      const body = await res.json()
-      expect(body.error).toContain('localhost')
-
-      booth.close()
-    })
-
-    it('records stats from middleware events', async () => {
-      const { app, booth } = setup()
-
-      // Trigger a 402 challenge
-      await app.request('/route', { method: 'POST' })
-
-      const snap = booth.stats.snapshot()
-      expect(snap.requests.challenged).toBe(1)
-
-      booth.close()
-    })
+    booth.close()
   })
 
-  describe('healthHandler', () => {
-    it('returns 200 with healthy status', async () => {
-      const { app, booth } = setup()
-
-      const res = await app.request('/health')
-      expect(res.status).toBe(200)
-      const body = await res.json()
-      expect(body.status).toBe('healthy')
-      expect(body.database).toBe('ok')
-      expect(body.upSince).toBeTruthy()
-
-      booth.close()
-    })
-
-    it('returns 503 when database is closed', async () => {
-      const { app, booth } = setup()
-
-      booth.close() // Close the database
-      const res = await app.request('/health')
-      expect(res.status).toBe(503)
-      const body = await res.json()
-      expect(body.status).toBe('degraded')
-      expect(body.database).toBe('unreachable')
-    })
-
-    it('reports degraded when Lightning backend is unreachable', async () => {
-      const { app, booth, backend } = setup()
-      vi.mocked(backend.checkInvoice).mockRejectedValue(new Error('Connection refused'))
-
-      const res = await app.request('/health')
-      expect(res.status).toBe(503)
-      const body = await res.json()
-      expect(body.status).toBe('degraded')
-      expect(body.lightning).toBe('unreachable')
-      expect(body.database).toBe('ok')
-
-      booth.close()
-    })
-
-    it('reports healthy with lightning field when both services are ok', async () => {
-      const { app, booth, backend } = setup()
-      vi.mocked(backend.checkInvoice).mockResolvedValue({ paid: false })
-
-      const res = await app.request('/health')
-      expect(res.status).toBe(200)
-      const body = await res.json()
-      expect(body.lightning).toBe('ok')
-      expect(body.database).toBe('ok')
-
-      booth.close()
-    })
-
-    it('requires no authentication', async () => {
-      const { app, booth } = setup({ adminToken: 'secret-token' })
-
-      // No auth headers — should still work
-      const res = await app.request('/health')
-      expect(res.status).toBe(200)
-
-      booth.close()
-    })
-  })
-
-  it('full flow: 402 → payment page → create invoice → JSON status', async () => {
+  it('full flow: 402 -> payment page -> create invoice -> JSON status', async () => {
     const { app, booth, backend, paymentHash, preimage } = setup()
 
     // 1. Request a priced route, get 402

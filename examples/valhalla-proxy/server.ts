@@ -19,6 +19,7 @@ app.use('/*', cors({
 }))
 
 const booth = new Booth({
+  adapter: 'hono',
   backend,
   pricing: {
     '/route': 2,
@@ -32,9 +33,6 @@ const booth = new Booth({
   responseHeaders: { 'X-Coverage': 'GB' },
   defaultInvoiceAmount: parseInt(process.env.DEFAULT_INVOICE_SATS ?? '1000', 10),
   rootKey: process.env.ROOT_KEY,
-  dbPath: process.env.DB_PATH ?? './credits.db',
-  trustProxy,
-  adminToken: process.env.ADMIN_TOKEN,
   creditTiers: [
     { amountSats: 1_000,   creditSats: 1_000,   label: 'Starter' },
     { amountSats: 10_000,  creditSats: 11_100,  label: 'Pro' },
@@ -49,12 +47,9 @@ const booth = new Booth({
   },
 })
 
-app.get('/health', booth.healthHandler)
-app.get('/stats', booth.statsHandler)
-app.get('/invoice-status/:paymentHash', booth.invoiceStatusHandler)
-app.post('/create-invoice', booth.createInvoiceHandler)
-app.post('/admin/reset-free-tier', booth.resetFreeTierHandler)
-app.use('/*', booth.middleware)
+app.get('/invoice-status/:paymentHash', booth.invoiceStatusHandler as any)
+app.post('/create-invoice', booth.createInvoiceHandler as any)
+app.use('/*', booth.middleware as any)
 
 // Hourly cleanup: remove expired invoices, drained credits, stale claims
 const cleanupTimer = setInterval(() => {

@@ -1,67 +1,74 @@
 import type { LightningBackend, Invoice, InvoiceStatus } from '../types.js'
+import { readFileSync } from 'node:fs'
 
 export interface LndConfig {
-  /** LND REST API URL (e.g. https://localhost:8080). */
+  /** LND REST API URL (e.g. https://localhost:8080) */
   url: string
-  /** Hex-encoded admin macaroon. */
-  macaroon: string
+  /** Admin macaroon as hex string */
+  macaroon?: string
+  /** Path to admin.macaroon file (alternative to hex) */
+  macaroonPath?: string
 }
 
 /**
  * Lightning backend adapter for LND's REST API.
  *
- * Uses the `/v1/invoices` and `/v1/invoice/{r_hash}` endpoints.
- * Authentication via `Grpc-Metadata-macaroon` header with hex-encoded macaroon.
+ * Authenticates via the `Grpc-Metadata-macaroon` header using a hex-encoded
+ * admin macaroon. The macaroon can be provided directly or read from a file.
  *
- * @see https://lightning.engineering/api-docs/api/lnd/lightning/add-invoice
- * @see https://lightning.engineering/api-docs/api/lnd/lightning/lookup-invoice
+ * @see https://lightning.engineering/api-docs/api/lnd/
  */
 export function lndBackend(config: LndConfig): LightningBackend {
   const baseUrl = config.url.replace(/\/$/, '')
-  const headers: Record<string, string> = {
-    'Grpc-Metadata-macaroon': config.macaroon,
+
+  let macaroonHex: string
+  if (config.macaroon) {
+    macaroonHex = config.macaroon
+  } else if (config.macaroonPath) {
+    macaroonHex = readFileSync(config.macaroonPath).toString('hex')
+  } else {
+    throw new Error('LND backend requires either macaroon (hex) or macaroonPath')
   }
 
   return {
     async createInvoice(amountSats: number, memo?: string): Promise<Invoice> {
-      const body: Record<string, string> = { value: String(amountSats) }
-      if (memo) body.memo = memo
-
       const res = await fetch(`${baseUrl}/v1/invoices`, {
         method: 'POST',
-        headers: { ...headers, 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        headers: {
+          'Grpc-Metadata-macaroon': macaroonHex,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ value: String(amountSats), memo: memo ?? '' }),
       })
 
       if (!res.ok) {
         const text = await res.text().catch(() => '')
-        throw new Error(`LND createInvoice failed (${res.status}): ${text}`)
+        throw new Error(`LND createinvoice failed (${res.status}): ${text}`)
       }
 
       const data = await res.json() as { r_hash: string; payment_request: string }
-      return {
-        bolt11: data.payment_request,
-        paymentHash: Buffer.from(data.r_hash, 'base64').toString('hex'),
-      }
+      const paymentHash = Buffer.from(data.r_hash, 'base64').toString('hex')
+
+      return { bolt11: data.payment_request, paymentHash }
     },
 
     async checkInvoice(paymentHash: string): Promise<InvoiceStatus> {
-      const res = await fetch(`${baseUrl}/v1/invoice/${paymentHash}`, {
-        headers,
+      const hashBase64 = Buffer.from(paymentHash, 'hex')
+        .toString('base64')
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+
+      const res = await fetch(`${baseUrl}/v1/invoice/${hashBase64}`, {
+        headers: { 'Grpc-Metadata-macaroon': macaroonHex },
       })
 
-      if (res.status === 404) return { paid: false }
+      if (!res.ok) return { paid: false }
 
-      if (!res.ok) {
-        const text = await res.text().catch(() => '')
-        throw new Error(`LND checkInvoice failed (${res.status}): ${text}`)
-      }
+      const data = await res.json() as { settled: boolean; r_preimage?: string }
 
-      const data = await res.json() as { state: string; r_preimage?: string }
-      const paid = data.state === 'SETTLED'
       return {
-        paid,
-        preimage: paid && data.r_preimage
+        paid: data.settled,
+        preimage: data.settled && data.r_preimage
           ? Buffer.from(data.r_preimage, 'base64').toString('hex')
           : undefined,
       }

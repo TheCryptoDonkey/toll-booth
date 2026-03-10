@@ -1,7 +1,7 @@
 // src/payment-page.test.ts
 import { describe, it, expect } from 'vitest'
 import { renderPaymentPage, renderErrorPage } from './payment-page.js'
-import type { StoredInvoice } from './invoice-store.js'
+import type { StoredInvoice } from './storage/interface.js'
 
 const mockInvoice: StoredInvoice = {
   paymentHash: 'abc123def456',

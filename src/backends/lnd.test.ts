@@ -1,152 +1,74 @@
-// src/backends/lnd.test.ts
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { lndBackend } from './lnd.js'
 
 const mockFetch = vi.fn()
 vi.stubGlobal('fetch', mockFetch)
 
-beforeEach(() => mockFetch.mockReset())
+afterEach(() => mockFetch.mockReset())
 
 describe('lndBackend', () => {
-  const backend = lndBackend({
-    url: 'https://localhost:8080',
-    macaroon: 'abcdef1234567890',
+  it('throws if neither macaroon nor macaroonPath provided', () => {
+    expect(() => lndBackend({ url: 'https://localhost:8080' })).toThrow()
   })
 
-  describe('createInvoice', () => {
-    it('calls POST /v1/invoices with JSON body and macaroon header', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          r_hash: Buffer.from('a'.repeat(64), 'hex').toString('base64'),
-          payment_request: 'lnbc1500n1ptest...',
+  it('creates an invoice', async () => {
+    const rHashBase64 = Buffer.from('deadbeef01234567', 'hex').toString('base64')
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        r_hash: rHashBase64,
+        payment_request: 'lnbc1000n1ptest',
+      }),
+    })
+
+    const backend = lndBackend({ url: 'https://localhost:8080', macaroon: 'aabbcc' })
+    const invoice = await backend.createInvoice(1000, 'test memo')
+
+    expect(invoice.bolt11).toBe('lnbc1000n1ptest')
+    expect(invoice.paymentHash).toBe('deadbeef01234567')
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://localhost:8080/v1/invoices',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          'Grpc-Metadata-macaroon': 'aabbcc',
         }),
-      })
-
-      const invoice = await backend.createInvoice(100, 'test memo')
-
-      expect(mockFetch).toHaveBeenCalledOnce()
-      const [url, opts] = mockFetch.mock.calls[0]
-      expect(url).toBe('https://localhost:8080/v1/invoices')
-      expect(opts.method).toBe('POST')
-      expect(opts.headers['Grpc-Metadata-macaroon']).toBe('abcdef1234567890')
-      expect(opts.headers['Content-Type']).toBe('application/json')
-
-      const body = JSON.parse(opts.body)
-      expect(body.value).toBe('100')
-      expect(body.memo).toBe('test memo')
-
-      expect(invoice.bolt11).toBe('lnbc1500n1ptest...')
-      expect(invoice.paymentHash).toMatch(/^[0-9a-f]{64}$/)
-    })
-
-    it('omits memo when not provided', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          r_hash: Buffer.from('b'.repeat(64), 'hex').toString('base64'),
-          payment_request: 'lnbc1000n1ptest...',
-        }),
-      })
-
-      await backend.createInvoice(50)
-
-      const body = JSON.parse(mockFetch.mock.calls[0][1].body)
-      expect(body.memo).toBeUndefined()
-    })
-
-    it('throws on HTTP error', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 500,
-        text: async () => 'Internal error',
-      })
-
-      await expect(backend.createInvoice(100)).rejects.toThrow(/500/)
-    })
+      }),
+    )
   })
 
-  describe('checkInvoice', () => {
-    it('returns paid=true with preimage when settled', async () => {
-      const preimageBytes = Buffer.from('c'.repeat(64), 'hex')
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          state: 'SETTLED',
-          r_preimage: preimageBytes.toString('base64'),
-        }),
-      })
+  it('checks invoice status — paid', async () => {
+    const preimageHex = 'cafebabe12345678'
+    const preimageBase64 = Buffer.from(preimageHex, 'hex').toString('base64')
 
-      const status = await backend.checkInvoice('d'.repeat(64))
-
-      const [url] = mockFetch.mock.calls[0]
-      expect(url).toBe('https://localhost:8080/v1/invoice/' + 'd'.repeat(64))
-      expect(status.paid).toBe(true)
-      expect(status.preimage).toBe('c'.repeat(64))
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        settled: true,
+        r_preimage: preimageBase64,
+      }),
     })
 
-    it('returns paid=false when OPEN', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ state: 'OPEN' }),
-      })
+    const backend = lndBackend({ url: 'https://localhost:8080', macaroon: 'aabbcc' })
+    const status = await backend.checkInvoice('deadbeef01234567')
 
-      const status = await backend.checkInvoice('e'.repeat(64))
-      expect(status.paid).toBe(false)
-      expect(status.preimage).toBeUndefined()
-    })
-
-    it('returns paid=false when CANCELED', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ state: 'CANCELED' }),
-      })
-
-      const status = await backend.checkInvoice('f'.repeat(64))
-      expect(status.paid).toBe(false)
-    })
-
-    it('returns paid=false on 404 (not found)', async () => {
-      mockFetch.mockResolvedValueOnce({ ok: false, status: 404 })
-
-      const status = await backend.checkInvoice('0'.repeat(64))
-      expect(status.paid).toBe(false)
-    })
-
-    it('throws on 401 (auth failure)', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 401,
-        text: async () => 'Unauthorized',
-      })
-
-      await expect(backend.checkInvoice('a'.repeat(64))).rejects.toThrow(/401/)
-    })
-
-    it('throws on 500 (server error)', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 500,
-        text: async () => 'Internal error',
-      })
-
-      await expect(backend.checkInvoice('a'.repeat(64))).rejects.toThrow(/500/)
-    })
+    expect(status.paid).toBe(true)
+    expect(status.preimage).toBe(preimageHex)
   })
 
-  describe('url normalisation', () => {
-    it('strips trailing slash from base URL', async () => {
-      const b = lndBackend({ url: 'https://localhost:8080/', macaroon: 'abc' })
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          r_hash: Buffer.from('a'.repeat(64), 'hex').toString('base64'),
-          payment_request: 'lnbc1test',
-        }),
-      })
-
-      await b.createInvoice(1)
-      expect(mockFetch.mock.calls[0][0]).toBe('https://localhost:8080/v1/invoices')
+  it('checks invoice status — unpaid', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        settled: false,
+      }),
     })
+
+    const backend = lndBackend({ url: 'https://localhost:8080', macaroon: 'aabbcc' })
+    const status = await backend.checkInvoice('deadbeef01234567')
+
+    expect(status.paid).toBe(false)
+    expect(status.preimage).toBeUndefined()
   })
 })

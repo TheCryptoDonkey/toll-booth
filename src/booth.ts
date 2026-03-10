@@ -1,70 +1,58 @@
 // src/booth.ts
-import type { Context } from 'hono'
-import type { BoothConfig, LightningBackend } from './types.js'
-import type { EventHandler } from './middleware.js'
-import { tollBooth } from './middleware.js'
-import { FreeTier } from './free-tier.js'
-import { invoiceStatus } from './invoice-status.js'
-import { createInvoiceHandler } from './create-invoice.js'
-import { CreditMeter } from './meter.js'
-import { InvoiceStore } from './invoice-store.js'
+import type { BoothConfig, EventHandler } from './types.js'
+import type { StorageBackend } from './storage/interface.js'
+import type { TollBoothEngine } from './core/toll-booth.js'
+import type { CreateInvoiceDeps } from './core/create-invoice.js'
+import type { InvoiceStatusDeps } from './core/invoice-status.js'
+import { createTollBooth } from './core/toll-booth.js'
+import { sqliteStorage } from './storage/sqlite.js'
 import { StatsCollector } from './stats.js'
-import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
-import Database from 'better-sqlite3'
-import { getTrustedClientIp } from './client-ip.js'
+import { randomBytes } from 'node:crypto'
+
+import { createHonoMiddleware, createHonoInvoiceStatusHandler, createHonoCreateInvoiceHandler, createHonoNwcHandler, createHonoCashuHandler } from './adapters/hono.js'
+import { createExpressMiddleware, createExpressInvoiceStatusHandler, createExpressCreateInvoiceHandler } from './adapters/express.js'
+import { createWebStandardMiddleware, createWebStandardInvoiceStatusHandler, createWebStandardCreateInvoiceHandler } from './adapters/web-standard.js'
+
+export type AdapterType = 'hono' | 'express' | 'web-standard'
+
+export interface BoothOptions extends Omit<BoothConfig, 'dbPath'> {
+  adapter: AdapterType
+  storage?: StorageBackend
+}
 
 /**
  * Encapsulates the middleware, invoice-status handler, create-invoice handler,
  * and wallet adapter endpoints with shared internal state.
  *
+ * The `adapter` option selects the framework integration:
+ * - `'hono'` — Hono middleware and handlers
+ * - `'express'` — Express middleware and handlers
+ * - `'web-standard'` — Web Standards (Request/Response) handlers
+ *
  * ```typescript
- * const booth = new Booth(config)
+ * const booth = new Booth({ adapter: 'hono', ...config })
  * app.get('/invoice-status/:paymentHash', booth.invoiceStatusHandler)
  * app.post('/create-invoice', booth.createInvoiceHandler)
- * // Optional wallet adapter endpoints
- * if (config.nwcPayInvoice) app.post('/nwc-pay', booth.nwcPayHandler!)
- * if (config.redeemCashu) app.post('/cashu-redeem', booth.cashuRedeemHandler!)
  * app.use('/*', booth.middleware)
  * ```
  */
 export class Booth {
-  readonly middleware: ReturnType<typeof tollBooth>
-  readonly invoiceStatusHandler: ReturnType<typeof invoiceStatus>
-  readonly createInvoiceHandler: ReturnType<typeof createInvoiceHandler>
-  readonly nwcPayHandler?: (c: Context) => Promise<Response>
-  readonly cashuRedeemHandler?: (c: Context) => Promise<Response>
+  readonly middleware: unknown
+  readonly invoiceStatusHandler: unknown
+  readonly createInvoiceHandler: unknown
+  readonly nwcPayHandler?: unknown
+  readonly cashuRedeemHandler?: unknown
 
   /** Aggregate usage statistics. Resets on restart. */
   readonly stats: StatsCollector
 
-  private readonly db: Database.Database
-  private readonly backend: LightningBackend
-  private readonly meter: CreditMeter
-  private readonly invoiceStore: InvoiceStore
+  private readonly storage: StorageBackend
+  private readonly engine: TollBoothEngine
   private readonly rootKey: string
-  private readonly freeTier: FreeTier | null
-  private readonly trustProxy: boolean
-  private readonly adminToken?: string
-  private readonly pendingRedemptions = new Set<string>()
 
-  constructor(config: BoothConfig & EventHandler) {
-    if (!config.rootKey) {
-      console.error(
-        '[toll-booth] WARNING: No rootKey provided — using a random key. ' +
-        'All macaroons will be invalidated on restart. ' +
-        'Set rootKey to a persistent 32-byte hex string in production.',
-      )
-    } else if (!/^[0-9a-f]{64}$/i.test(config.rootKey)) {
-      throw new Error(
-        `rootKey must be exactly 64 hex characters (32 bytes), got ${config.rootKey.length} characters`,
-      )
-    }
+  constructor(config: BoothOptions & EventHandler) {
     this.rootKey = config.rootKey ?? randomBytes(32).toString('hex')
-    this.backend = config.backend
-    this.db = new Database(config.dbPath ?? './toll-booth.db')
-    this.db.pragma('journal_mode = WAL')
-    this.meter = new CreditMeter(this.db)
-    this.invoiceStore = new InvoiceStore(this.db)
+    this.storage = config.storage ?? sqliteStorage()
     this.stats = new StatsCollector()
     this.trustProxy = config.trustProxy ?? false
 
@@ -77,7 +65,6 @@ export class Booth {
     this.adminToken = config.adminToken
 
     const defaultAmount = config.defaultInvoiceAmount ?? 1000
-    this.freeTier = config.freeTier ? new FreeTier(config.freeTier.requestsPerDay) : null
 
     // Wire stats collection while preserving user-provided callbacks
     const userOnPayment = config.onPayment
@@ -85,9 +72,15 @@ export class Booth {
     const userOnChallenge = config.onChallenge
     const stats = this.stats
 
-    // Middleware shares the same meter, invoice store, and root key
-    this.middleware = tollBooth({
-      ...config,
+    this.engine = createTollBooth({
+      backend: config.backend,
+      storage: this.storage,
+      pricing: config.pricing,
+      upstream: config.upstream,
+      defaultInvoiceAmount: defaultAmount,
+      rootKey: this.rootKey,
+      freeTier: config.freeTier,
+      creditTiers: config.creditTiers,
       onPayment: (event) => {
         stats.recordPayment(event)
         userOnPayment?.(event)
@@ -100,173 +93,56 @@ export class Booth {
         stats.recordChallenge(event)
         userOnChallenge?.(event)
       },
-      _meter: this.meter,
-      _invoiceStore: this.invoiceStore,
-      _rootKey: this.rootKey,
-      _freeTier: this.freeTier,
-      trustProxy: this.trustProxy,
     })
 
-    // Invoice status with content negotiation and HTML payment page
-    this.invoiceStatusHandler = invoiceStatus({
+    const createInvoiceDeps: CreateInvoiceDeps = {
       backend: config.backend,
-      invoiceStore: this.invoiceStore,
-      meter: this.meter,
-      tiers: config.creditTiers,
-      nwcEnabled: !!config.nwcPayInvoice,
-      cashuEnabled: !!config.redeemCashu,
-    })
-
-    // Create invoice with tier support
-    this.createInvoiceHandler = createInvoiceHandler({
-      backend: config.backend,
-      invoiceStore: this.invoiceStore,
+      storage: this.storage,
       rootKey: this.rootKey,
       tiers: config.creditTiers ?? [],
       defaultAmount,
-    })
+    }
 
-    // NWC proxy endpoint (only if adapter provided)
-    if (config.nwcPayInvoice) {
-      const nwcPay = config.nwcPayInvoice
-      const meter = this.meter
-      const invoiceStore = this.invoiceStore
-      this.nwcPayHandler = async (c: Context) => {
-        try {
-          const body = await c.req.json<{
-            nwcUri: string; bolt11: string; paymentHash: string
-          }>()
-          const { nwcUri, bolt11, paymentHash } = body
-          if (!nwcUri || !bolt11 || !paymentHash) {
-            return c.json({ error: 'nwcUri, bolt11, and paymentHash are required' }, 400)
-          }
-          if (!/^[0-9a-f]{64}$/i.test(paymentHash)) {
-            return c.json({ error: 'Invalid paymentHash — expected 64 hex characters' }, 400)
-          }
-          // Look up the server-issued invoice to get the authoritative credit amount
-          const stored = invoiceStore.get(paymentHash)
-          if (!stored) {
-            return c.json({ error: 'Unknown payment hash — no invoice found' }, 404)
-          }
-          if (meter.isSettled(paymentHash)) {
-            return c.json({ error: 'This payment hash has already been credited' }, 409)
-          }
-          if (bolt11 !== stored.bolt11) {
-            return c.json({ error: 'bolt11 does not match the stored invoice' }, 400)
-          }
-          const preimage = await nwcPay(nwcUri, bolt11)
-          // Verify preimage matches the paymentHash
-          const computedHash = createHash('sha256')
-            .update(Buffer.from(preimage, 'hex'))
-            .digest('hex')
-          if (computedHash !== paymentHash) {
-            return c.json({ error: 'Preimage does not match payment hash' }, 400)
-          }
-          // Credit the server-determined amount, not a client-supplied value
-          const wasFirstCredit = meter.creditOnce(paymentHash, stored.amountSats)
-          if (!wasFirstCredit) {
-            // Race: another request credited between isSettled() and here
-            return c.json({ error: 'This payment hash has already been credited' }, 409)
-          }
-          stats.recordNwcPayment(stored.amountSats)
-          return c.json({ preimage, credited: stored.amountSats })
-        } catch (err) {
-          return c.json({ error: err instanceof Error ? err.message : 'NWC payment failed' }, 500)
+    const invoiceStatusDeps: InvoiceStatusDeps = {
+      backend: config.backend,
+      storage: this.storage,
+      tiers: config.creditTiers,
+      nwcEnabled: !!config.nwcPayInvoice,
+      cashuEnabled: !!config.redeemCashu,
+    }
+
+    const upstream = config.upstream.replace(/\/$/, '')
+
+    switch (config.adapter) {
+      case 'hono':
+        this.middleware = createHonoMiddleware({ engine: this.engine, upstream })
+        this.invoiceStatusHandler = createHonoInvoiceStatusHandler(invoiceStatusDeps)
+        this.createInvoiceHandler = createHonoCreateInvoiceHandler(createInvoiceDeps)
+        if (config.nwcPayInvoice) {
+          this.nwcPayHandler = createHonoNwcHandler(config.nwcPayInvoice)
         }
-      }
-    }
-
-    // Cashu redeem endpoint (only if adapter provided)
-    if (config.redeemCashu) {
-      const redeem = config.redeemCashu
-      const meter = this.meter
-      const invoiceStore = this.invoiceStore
-      const pending = this.pendingRedemptions
-      this.cashuRedeemHandler = async (c: Context) => {
-        try {
-          const { token, paymentHash } = await c.req.json<{ token: string; paymentHash: string }>()
-          if (!token || !paymentHash) {
-            return c.json({ error: 'token and paymentHash are required' }, 400)
-          }
-          if (!/^[0-9a-f]{64}$/i.test(paymentHash)) {
-            return c.json({ error: 'Invalid paymentHash — expected 64 hex characters' }, 400)
-          }
-          // Verify the paymentHash corresponds to a server-issued invoice
-          const stored = invoiceStore.get(paymentHash)
-          if (!stored) {
-            return c.json({ error: 'Unknown payment hash — no invoice found' }, 404)
-          }
-          // In-memory fast path — prevents duplicate work within one process
-          if (pending.has(paymentHash)) {
-            return c.json({ error: 'Redemption already in progress for this payment hash' }, 409)
-          }
-          // DB-level claim — cross-instance distributed lock via settled_invoices.
-          // This MUST happen BEFORE redeem() so only one instance calls the
-          // irreversible Cashu mint. isSettled() is now implied by claim().
-          if (!meter.claim(paymentHash)) {
-            return c.json({ error: 'This payment hash has already been credited' }, 409)
-          }
-          pending.add(paymentHash)
-
-          let credited: number
-          try {
-            credited = await redeem(token, paymentHash)
-          } catch (err) {
-            pending.delete(paymentHash)
-            meter.unsettle(paymentHash)
-            throw err // Re-throw to hit the outer catch block
-          }
-
-          // Validate adapter output before touching the ledger
-          if (!Number.isInteger(credited) || credited < 1) {
-            pending.delete(paymentHash)
-            meter.unsettle(paymentHash)
-            return c.json({
-              error: `Cashu adapter returned invalid amount: ${credited}`,
-            }, 502)
-          }
-
-          // Write-ahead: persist redeemed amount before crediting.
-          // If we crash after this but before settle, recovery replays the credit.
-          meter.recordRedemption(paymentHash, credited)
-          meter.settleRedemption(paymentHash, credited)
-          pending.delete(paymentHash)
-
-          stats.recordCashuRedemption(credited)
-          return c.json({ credited, macaroon: stored.macaroon })
-        } catch (err) {
-          return c.json({ error: err instanceof Error ? err.message : 'Cashu redemption failed' }, 500)
+        if (config.redeemCashu) {
+          this.cashuRedeemHandler = createHonoCashuHandler(config.redeemCashu, this.storage)
         }
-      }
-    }
-  }
+        break
 
-  /**
-   * Handler for GET /stats — returns aggregate usage statistics as JSON.
-   * Restricted to localhost — returns 403 for requests from other IPs.
-   */
-  statsHandler = async (c: Context): Promise<Response> => {
-    if (!this.isAuthorisedAdmin(c)) {
-      return c.json({ error: this.adminErrorMessage() }, 403)
+      case 'express':
+        this.middleware = createExpressMiddleware(this.engine, upstream)
+        this.invoiceStatusHandler = createExpressInvoiceStatusHandler(invoiceStatusDeps)
+        this.createInvoiceHandler = createExpressCreateInvoiceHandler(createInvoiceDeps)
+        break
+
+      case 'web-standard':
+        this.middleware = createWebStandardMiddleware(this.engine, upstream)
+        this.invoiceStatusHandler = createWebStandardInvoiceStatusHandler(invoiceStatusDeps)
+        this.createInvoiceHandler = createWebStandardCreateInvoiceHandler(createInvoiceDeps)
+        break
     }
-    return c.json(this.stats.snapshot())
   }
 
   /** Reset free-tier counters for all IPs. */
   resetFreeTier(): void {
-    this.freeTier?.reset()
-  }
-
-  /**
-   * Handler for POST /admin/reset-free-tier — resets free-tier counters.
-   * Restricted to localhost — returns 403 for requests from other IPs.
-   */
-  resetFreeTierHandler = async (c: Context): Promise<Response> => {
-    if (!this.isAuthorisedAdmin(c)) {
-      return c.json({ error: this.adminErrorMessage() }, 403)
-    }
-    this.resetFreeTier()
-    return c.json({ ok: true, message: 'Free-tier counters reset' })
+    this.engine.freeTier?.reset()
   }
 
   /**
@@ -302,7 +178,7 @@ export class Booth {
   }
 
   close(): void {
-    this.db.close()
+    this.storage.close()
   }
 
   private async checkLightning(): Promise<boolean> {
@@ -345,14 +221,4 @@ export class Booth {
     }
     return 'Admin only available from localhost'
   }
-}
-
-function isLoopback(ip: string): boolean {
-  return ip === '127.0.0.1' || ip === '::1' || ip === 'localhost' || ip === '::ffff:127.0.0.1'
-}
-
-function safeEqual(a: string, b: string): boolean {
-  const hashA = createHash('sha256').update(a).digest()
-  const hashB = createHash('sha256').update(b).digest()
-  return timingSafeEqual(hashA, hashB)
 }
