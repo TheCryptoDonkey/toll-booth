@@ -28,6 +28,10 @@ export async function handleCreateInvoice(
   try {
     const requestedAmount = request.amountSats ?? deps.defaultAmount
 
+    if (!Number.isInteger(requestedAmount) || requestedAmount < 1) {
+      return { success: false, error: 'amountSats must be a positive integer' }
+    }
+
     // Find matching tier or validate amount
     let creditSats = requestedAmount
     if (deps.tiers.length > 0) {

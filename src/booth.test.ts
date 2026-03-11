@@ -299,6 +299,26 @@ describe('Booth', () => {
     booth.close()
   })
 
+  it.each([
+    { amountSats: 0, label: 'zero' },
+    { amountSats: -100, label: 'negative' },
+    { amountSats: 1.5, label: 'non-integer' },
+  ])('rejects $label amountSats in POST /create-invoice', async ({ amountSats }) => {
+    const { request, booth } = setup()
+
+    const res = await request('/create-invoice', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ amountSats }),
+    })
+
+    expect(res.status).toBe(400)
+    const body = await res.json()
+    expect(body.error).toContain('positive integer')
+
+    booth.close()
+  })
+
   describe('NWC adapter', () => {
     it('pays via NWC and returns preimage', async () => {
       const { preimage } = makePreimageAndHash()
