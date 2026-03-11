@@ -190,6 +190,11 @@ function clientScript(): string {
   var hash = card.dataset.paymentHash;
   var statusUrl = window.location.pathname + window.location.search;
   var statusToken = new URLSearchParams(window.location.search).get('token') || '';
+  // Derive the mount base path so API calls work when toll-booth is mounted on a subpath.
+  // The payment page is always served at <basePath>/invoice-status/<hash>, so strip from
+  // '/invoice-status/' onwards to recover the base path (e.g. '' or '/pay').
+  var _pathParts = window.location.pathname.split('/invoice-status/');
+  var basePath = _pathParts.length > 1 ? _pathParts[0] : '';
   if (card.dataset.paid === 'true') return;
 
   // Detect WebLN
@@ -242,7 +247,7 @@ function clientScript(): string {
     document.querySelectorAll('.tier').forEach(function(t){t.classList.remove('selected')});
     el.classList.add('selected');
     // Create a new invoice for this tier, then update the page in-place
-    fetch('/create-invoice', {
+    fetch(basePath + '/create-invoice', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({amountSats: parseInt(el.dataset.amount)})
@@ -296,7 +301,7 @@ function clientScript(): string {
     var uri = document.getElementById('nwc-uri').value.trim();
     if (!uri) return;
     var invoice = document.getElementById('invoice-str').textContent;
-    fetch('/nwc-pay', {
+    fetch(basePath + '/nwc-pay', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({nwcUri: uri, bolt11: invoice, paymentHash: hash, statusToken: statusToken})
@@ -312,7 +317,7 @@ function clientScript(): string {
   window.redeemCashu = function(){
     var token = document.getElementById('cashu-token').value.trim();
     if (!token) return;
-    fetch('/cashu-redeem', {
+    fetch(basePath + '/cashu-redeem', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({token: token, paymentHash: hash, statusToken: statusToken})

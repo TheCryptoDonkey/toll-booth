@@ -77,6 +77,8 @@ Each IP address gets a configurable number of free requests per day — no signu
 - Ensure your `pricing` keys match the paths the middleware actually sees (after mounting).
 - Set `trustProxy: true` when behind a reverse proxy, or provide a `getClientIp` callback for per-client free-tier isolation.
 - Treat `payment_url` as sensitive because it carries the invoice-status lookup token.
+- Rate-limit `/create-invoice` at your reverse proxy (nginx, Cloudflare, etc.) — each call creates a real Lightning invoice, so unthrottled access can exhaust node resources.
+- For the web-standard adapter, ensure your framework enforces request body size limits (the adapter rejects JSON bodies over 64 KiB by default, but the upstream proxy path streams without limit).
 - Upgrade/patch dependencies regularly (`npm audit`).
 
 ## Backends

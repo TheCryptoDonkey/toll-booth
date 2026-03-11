@@ -15,6 +15,35 @@ export type WebStandardHandler = (req: Request) => Promise<Response>
 
 // -- Helpers ------------------------------------------------------------------
 
+/**
+ * Parses the request body as JSON with a configurable size limit.
+ *
+ * Checks the `Content-Length` header first for a fast rejection, then reads
+ * the body as text and enforces the byte limit before parsing. Returns an
+ * empty object on any failure (oversized body, missing body, malformed JSON)
+ * so callers behave identically to the previous `.catch(() => ({}))` pattern.
+ *
+ * @param req      - The incoming request.
+ * @param maxBytes - Maximum allowed body size in bytes (default: 64 KiB).
+ */
+async function safeParseJson<T = Record<string, unknown>>(req: Request, maxBytes = 65_536): Promise<T> {
+  // Quick rejection via Content-Length header — avoids reading the body at all
+  const contentLength = req.headers.get('content-length')
+  if (contentLength !== null && parseInt(contentLength, 10) > maxBytes) {
+    return {} as T
+  }
+
+  try {
+    const text = await req.text()
+    if (text.length > maxBytes) {
+      return {} as T
+    }
+    return JSON.parse(text) as T
+  } catch {
+    return {} as T
+  }
+}
+
 async function proxyUpstream(upstream: string, req: Request, timeoutMs = 30_000): Promise<Response> {
   const url = new URL(req.url)
   const target = `${upstream}${url.pathname}${url.search}`
@@ -180,7 +209,7 @@ export function createWebStandardCreateInvoiceHandler(
   deps: CreateInvoiceDeps,
 ): WebStandardHandler {
   return async (req: Request): Promise<Response> => {
-    const body = await req.json().catch(() => ({})) as CreateInvoiceRequest
+    const body = await safeParseJson<CreateInvoiceRequest>(req)
     const result = await handleCreateInvoice(deps, body)
 
     if (!result.success) {
@@ -210,7 +239,7 @@ export function createWebStandardCreateInvoiceHandler(
  */
 export function createWebStandardNwcHandler(deps: NwcPayDeps): WebStandardHandler {
   return async (req: Request): Promise<Response> => {
-    const body = await req.json().catch(() => ({})) as NwcPayRequest
+    const body = await safeParseJson<NwcPayRequest>(req)
     const result = await handleNwcPay(deps, body)
     if (result.success) {
       return Response.json({ preimage: result.preimage })
@@ -229,7 +258,7 @@ export function createWebStandardNwcHandler(deps: NwcPayDeps): WebStandardHandle
  */
 export function createWebStandardCashuHandler(deps: CashuRedeemDeps): WebStandardHandler {
   return async (req: Request): Promise<Response> => {
-    const body = await req.json().catch(() => ({})) as CashuRedeemRequest
+    const body = await safeParseJson<CashuRedeemRequest>(req)
     const result = await handleCashuRedeem(deps, body)
     if (result.success) {
       return Response.json({ credited: result.credited, token_suffix: result.tokenSuffix })
