@@ -1,0 +1,69 @@
+import type { LightningBackend, Invoice, InvoiceStatus } from '../types.js'
+
+export interface LNbitsConfig {
+  /** LNbits instance URL (e.g. https://legend.lnbits.com) */
+  url: string
+  /** Invoice/read API key from the LNbits wallet */
+  apiKey: string
+}
+
+/**
+ * Lightning backend adapter for LNbits.
+ *
+ * Uses the LNbits Payments API with `X-Api-Key` header authentication.
+ * Works with any LNbits instance — self-hosted or hosted (legend.lnbits.com).
+ *
+ * LNbits abstracts over multiple funding sources (LND, CLN, Phoenixd,
+ * LndHub, etc.), so this backend supports any node type that LNbits
+ * connects to.
+ *
+ * @see https://lnbits.com/
+ */
+export function lnbitsBackend(config: LNbitsConfig): LightningBackend {
+  const baseUrl = config.url.replace(/\/$/, '')
+  const headers: Record<string, string> = {
+    'X-Api-Key': config.apiKey,
+    'Content-Type': 'application/json',
+  }
+
+  return {
+    async createInvoice(amountSats: number, memo?: string): Promise<Invoice> {
+      const res = await fetch(`${baseUrl}/api/v1/payments`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          out: false,
+          amount: amountSats,
+          memo: memo ?? 'toll-booth payment',
+        }),
+      })
+
+      if (!res.ok) {
+        const text = await res.text().catch(() => '')
+        throw new Error(`LNbits createInvoice failed (${res.status}): ${text}`)
+      }
+
+      const data = await res.json() as { payment_hash: string; payment_request: string }
+      return { bolt11: data.payment_request, paymentHash: data.payment_hash }
+    },
+
+    async checkInvoice(paymentHash: string): Promise<InvoiceStatus> {
+      const res = await fetch(`${baseUrl}/api/v1/payments/${paymentHash}`, {
+        headers: { 'X-Api-Key': config.apiKey },
+      })
+
+      if (res.status === 404) return { paid: false }
+
+      if (!res.ok) {
+        const text = await res.text().catch(() => '')
+        throw new Error(`LNbits checkInvoice failed (${res.status}): ${text}`)
+      }
+
+      const data = await res.json() as { paid: boolean; preimage?: string }
+      return {
+        paid: data.paid,
+        preimage: data.paid ? data.preimage : undefined,
+      }
+    },
+  }
+}

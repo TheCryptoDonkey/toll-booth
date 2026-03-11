@@ -73,11 +73,13 @@ Each IP address gets a configurable number of free requests per day — no signu
 
 ## Backends
 
-| Backend    | Status      |
-|------------|-------------|
-| Phoenixd   | Implemented |
-| LND        | Implemented |
-| CLN        | Implemented |
+| Backend    | Status      | Notes |
+|------------|-------------|-------|
+| Phoenixd   | Implemented | Simplest self-hosted option |
+| LND        | Implemented | Industry standard |
+| CLN        | Implemented | Core Lightning REST API |
+| LNbits     | Implemented | Any LNbits instance — self-hosted or hosted |
+| Alby (NWC) | Implemented | Nostr Wallet Connect |
 
 ## Reference deployment
 

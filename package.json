@@ -17,9 +17,17 @@
       "import": "./dist/backends/lnd.js",
       "types": "./dist/backends/lnd.d.ts"
     },
+    "./backends/cln": {
+      "import": "./dist/backends/cln.js",
+      "types": "./dist/backends/cln.d.ts"
+    },
     "./backends/alby": {
       "import": "./dist/backends/alby.js",
       "types": "./dist/backends/alby.d.ts"
+    },
+    "./backends/lnbits": {
+      "import": "./dist/backends/lnbits.js",
+      "types": "./dist/backends/lnbits.d.ts"
     },
     "./storage/sqlite": {
       "import": "./dist/storage/sqlite.js",

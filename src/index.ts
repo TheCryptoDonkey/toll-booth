@@ -34,6 +34,18 @@ export { FreeTier } from './free-tier.js'
 export { StatsCollector } from './stats.js'
 export { renderPaymentPage, renderErrorPage } from './payment-page.js'
 
+// Backends (re-exported for convenience — prefer subpath imports for tree-shaking)
+export { phoenixdBackend } from './backends/phoenixd.js'
+export type { PhoenixdConfig } from './backends/phoenixd.js'
+export { lndBackend } from './backends/lnd.js'
+export type { LndConfig } from './backends/lnd.js'
+export { clnBackend } from './backends/cln.js'
+export type { ClnConfig } from './backends/cln.js'
+export { lnbitsBackend } from './backends/lnbits.js'
+export type { LNbitsConfig } from './backends/lnbits.js'
+export { albyBackend } from './backends/alby.js'
+export type { AlbyConfig } from './backends/alby.js'
+
 // Types
 export type {
   LightningBackend, Invoice, InvoiceStatus, PricingTable, BoothConfig,
