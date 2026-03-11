@@ -59,6 +59,8 @@ toll-booth exists for the cases where Aperture doesn't fit:
 5. Each authenticated request deducts from the credit balance encoded in the macaroon.
 6. Credits exhausted → new 402 with a fresh invoice.
 
+The `payment_url` returned in a 402 is the canonical invoice-status URL. It now includes a per-invoice lookup secret; treat it like a bearer URL and avoid logging or sharing it.
+
 ## Free tier
 
 Each IP address gets a configurable number of free requests per day — no signup required. Once the free allowance is consumed, the client must pay to continue.
@@ -72,6 +74,7 @@ Each IP address gets a configurable number of free requests per day — no signu
 - Enable `strictPricing: true` to prevent unpriced routes from bypassing billing.
 - Ensure your `pricing` keys match the paths the middleware actually sees (after mounting).
 - Set `trustProxy: true` when behind a reverse proxy, or provide a `getClientIp` callback for per-client free-tier isolation.
+- Treat `payment_url` as sensitive because it carries the invoice-status lookup token.
 - Upgrade/patch dependencies regularly (`npm audit`).
 
 ## Backends
@@ -82,7 +85,7 @@ Each IP address gets a configurable number of free requests per day — no signu
 | LND        | Implemented | Industry standard |
 | CLN        | Implemented | Core Lightning REST API |
 | LNbits     | Implemented | Any LNbits instance — self-hosted or hosted |
-| Alby (NWC) | Experimental | Requires an NWC proxy/relay that supports both `make_invoice` and `lookup_invoice`; still not recommended for production |
+| Alby (NWC) | Experimental | Disabled by default. The current JSON relay transport is unauthenticated; only enable with `allowInsecureRelay: true` for local testing or a fully trusted relay shim |
 
 ## Reference deployment
 

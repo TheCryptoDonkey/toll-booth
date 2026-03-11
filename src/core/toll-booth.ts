@@ -101,9 +101,10 @@ export function createTollBooth(config: TollBoothCoreConfig): TollBoothEngine {
       }
 
       const macaroon = mintMacaroon(config.rootKey, paymentHash, defaultAmount)
+      const statusToken = randomBytes(32).toString('hex')
 
       // Store invoice for payment page (bolt11 is empty in Cashu-only mode)
-      config.storage.storeInvoice(paymentHash, bolt11 ?? '', defaultAmount, macaroon)
+      config.storage.storeInvoice(paymentHash, bolt11 ?? '', defaultAmount, macaroon, statusToken)
 
       config.onChallenge?.({
         timestamp: new Date().toISOString(),
@@ -119,7 +120,7 @@ export function createTollBooth(config: TollBoothCoreConfig): TollBoothEngine {
         error: 'Payment required',
         macaroon,
         payment_hash: paymentHash,
-        payment_url: `/invoice-status/${paymentHash}`,
+        payment_url: `/invoice-status/${paymentHash}?token=${statusToken}`,
         amount_sats: defaultAmount,
       }
       if (bolt11) body.invoice = bolt11
@@ -152,25 +153,33 @@ function handleL402Auth(
     const result = verifyMacaroon(rootKey, macaroonBase64)
     if (!result.valid || !result.paymentHash) return { authorised: false, remaining: 0 }
 
+    // Verify suffix proof:
+    // - Lightning path: suffix is the real preimage (sha256(preimage) == payment hash)
+    // - Cashu path: suffix matches the settlement secret stored at redemption time
+    const settlementSecret = storage.getSettlementSecret(result.paymentHash)
+    const hasValidLightningPreimage = isValidLightningPreimage(preimage, result.paymentHash)
+    const hasValidSettlementSecret = settlementSecret !== undefined && preimage === settlementSecret
+
+    if (!hasValidLightningPreimage && !hasValidSettlementSecret) {
+      return { authorised: false, remaining: 0 }
+    }
+
     // Check if this payment hash has already been settled (Lightning or Cashu)
     const alreadySettled = storage.isSettled(result.paymentHash)
 
     let creditedAmount: number | undefined
     if (!alreadySettled) {
-      // First-time settlement via Lightning: verify preimage
-      const computedHash = createHash('sha256')
-        .update(Buffer.from(preimage, 'hex'))
-        .digest('hex')
-      if (computedHash !== result.paymentHash) return { authorised: false, remaining: 0 }
+      // First-time settlement must be proven with a real preimage hash match.
+      if (!hasValidLightningPreimage) return { authorised: false, remaining: 0 }
 
-      // Atomically settle and credit (handles concurrent requests, crash-safe)
+      // Atomically settle and credit (handles concurrent requests, crash-safe).
+      // Store the preimage as settlement secret so subsequent requests can verify
+      // via either sha256(preimage)==hash or direct secret comparison.
       const amount = result.creditBalance ?? defaultAmount
-      if (storage.settleWithCredit(result.paymentHash, amount)) {
+      if (storage.settleWithCredit(result.paymentHash, amount, preimage)) {
         creditedAmount = amount
       }
     }
-    // If already settled (e.g. via Cashu), the macaroon alone is sufficient —
-    // the server has already verified payment out-of-band
 
     // Debit credit for this request
     const debit = storage.debit(result.paymentHash, cost)
@@ -181,4 +190,12 @@ function handleL402Auth(
     console.error('[toll-booth] L402 auth error:', err instanceof Error ? err.message : err)
     return { authorised: false, remaining: 0 }
   }
+}
+
+function isValidLightningPreimage(preimage: string, paymentHash: string): boolean {
+  if (!/^[0-9a-fA-F]{64}$/.test(preimage)) return false
+  const computedHash = createHash('sha256')
+    .update(Buffer.from(preimage, 'hex'))
+    .digest('hex')
+  return computedHash === paymentHash
 }

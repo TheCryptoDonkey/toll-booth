@@ -169,7 +169,8 @@ describe('renderPaymentPage', () => {
     })
 
     expect(html).toContain('setInterval')
-    expect(html).toContain('/invoice-status/')
+    expect(html).toContain('window.location.pathname + window.location.search')
+    expect(html).toContain('statusToken')
   })
 
   it('does not include polling script when paid', async () => {
@@ -183,6 +184,34 @@ describe('renderPaymentPage', () => {
     })
 
     expect(html).not.toContain('setInterval')
+  })
+
+  it('renders a settled token when payment is complete without a Lightning preimage', async () => {
+    const html = await renderPaymentPage({
+      invoice: mockInvoice,
+      paid: true,
+      tokenSuffix: 'cashu-settlement-secret-abc',
+      tiers: [],
+      nwcEnabled: false,
+      cashuEnabled: true,
+    })
+
+    expect(html).toContain('L402 Token')
+    expect(html).toContain('bWFjYXJvb24=:cashu-settlement-secret-abc')
+    expect(html).not.toContain('Payment preimage')
+  })
+
+  it('shows Unavailable when paid but no preimage or tokenSuffix', async () => {
+    const html = await renderPaymentPage({
+      invoice: mockInvoice,
+      paid: true,
+      tiers: [],
+      nwcEnabled: false,
+      cashuEnabled: true,
+    })
+
+    expect(html).toContain('Unavailable')
+    expect(html).not.toContain('Copy L402 Token')
   })
 })
 

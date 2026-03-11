@@ -126,9 +126,10 @@ export function createWebStandardMiddleware(
 /**
  * Returns a `WebStandardHandler` that serves invoice status as JSON or HTML.
  *
- * Extracts the payment hash from the last URL path segment. When
- * `Accept: text/html` is requested, renders the self-service payment page;
- * otherwise returns JSON with `{ paid, preimage }`.
+ * Extracts the payment hash from the last URL path segment and expects
+ * a `?token=...` status lookup secret. When `Accept: text/html` is requested,
+ * renders the self-service payment page; otherwise returns JSON with
+ * `{ paid, preimage }`.
  */
 export function createWebStandardInvoiceStatusHandler(
   deps: InvoiceStatusDeps,
@@ -140,19 +141,23 @@ export function createWebStandardInvoiceStatusHandler(
     if (!PAYMENT_HASH_RE.test(paymentHash)) {
       return Response.json({ error: 'Invalid payment hash' }, { status: 400 })
     }
+    const statusToken = url.searchParams.get('token') ?? undefined
     const accept = req.headers.get('accept') ?? ''
 
     try {
       if (accept.includes('text/html')) {
-        const { html, status } = await renderInvoiceStatusHtml(deps, paymentHash)
+        const { html, status } = await renderInvoiceStatusHtml(deps, paymentHash, statusToken)
         return new Response(html, {
           status,
           headers: { 'Content-Type': 'text/html; charset=utf-8' },
         })
       }
 
-      const result = await handleInvoiceStatus(deps, paymentHash)
-      return Response.json({ paid: result.paid, preimage: result.preimage })
+      const result = await handleInvoiceStatus(deps, paymentHash, statusToken)
+      if (!result.found) {
+        return Response.json({ error: 'Invoice not found' }, { status: 404 })
+      }
+      return Response.json({ paid: result.paid, preimage: result.preimage, token_suffix: result.tokenSuffix })
     } catch {
       return Response.json({ error: 'Failed to check invoice status' }, { status: 502 })
     }

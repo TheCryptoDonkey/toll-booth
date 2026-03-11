@@ -45,7 +45,7 @@ describe('sqliteStorage', () => {
 
   it('stores and retrieves invoices', () => {
     storage = sqliteStorage()
-    storage.storeInvoice('hash1', 'lnbc1...', 1000, 'mac1')
+    storage.storeInvoice('hash1', 'lnbc1...', 1000, 'mac1', 'token1')
 
     const invoice = storage.getInvoice('hash1')
     expect(invoice).toBeDefined()
@@ -63,12 +63,27 @@ describe('sqliteStorage', () => {
 
   it('is idempotent on duplicate invoice store', () => {
     storage = sqliteStorage()
-    storage.storeInvoice('hash1', 'lnbc1...', 1000, 'mac1')
-    storage.storeInvoice('hash1', 'lnbc2...', 2000, 'mac2')
+    storage.storeInvoice('hash1', 'lnbc1...', 1000, 'mac1', 'token1')
+    storage.storeInvoice('hash1', 'lnbc2...', 2000, 'mac2', 'token2')
 
     const invoice = storage.getInvoice('hash1')
     expect(invoice!.bolt11).toBe('lnbc1...')
     expect(invoice!.amountSats).toBe(1000)
+  })
+
+  it('retrieves invoice only when status token matches', () => {
+    storage = sqliteStorage()
+    storage.storeInvoice('hash1', 'lnbc1...', 1000, 'mac1', 'token1')
+
+    expect(storage.getInvoiceForStatus('hash1', 'wrong-token')).toBeUndefined()
+    expect(storage.getInvoiceForStatus('hash1', 'token1')).toEqual(
+      expect.objectContaining({
+        paymentHash: 'hash1',
+        bolt11: 'lnbc1...',
+        amountSats: 1000,
+        macaroon: 'mac1',
+      }),
+    )
   })
 
   it('settle returns true on first call, false on subsequent', () => {
@@ -90,6 +105,12 @@ describe('sqliteStorage', () => {
     expect(storage.settleWithCredit('hash1', 500)).toBe(true)
     expect(storage.isSettled('hash1')).toBe(true)
     expect(storage.balance('hash1')).toBe(500)
+  })
+
+  it('stores settlement secret when provided', () => {
+    storage = sqliteStorage()
+    expect(storage.settleWithCredit('hash1', 500, 'secret-abc')).toBe(true)
+    expect(storage.getSettlementSecret('hash1')).toBe('secret-abc')
   })
 
   it('settleWithCredit rejects if already settled (no double credit)', () => {

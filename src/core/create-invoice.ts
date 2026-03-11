@@ -58,8 +58,9 @@ export async function handleCreateInvoice(
     }
 
     const macaroon = mintMacaroon(deps.rootKey, paymentHash, creditSats)
+    const statusToken = randomBytes(32).toString('hex')
 
-    deps.storage.storeInvoice(paymentHash, bolt11 ?? '', creditSats, macaroon)
+    deps.storage.storeInvoice(paymentHash, bolt11 ?? '', creditSats, macaroon, statusToken)
 
     const qrSvg = bolt11
       ? await QRCode.toString(
@@ -73,7 +74,7 @@ export async function handleCreateInvoice(
       data: {
         bolt11: bolt11 ?? '',
         paymentHash,
-        paymentUrl: `/invoice-status/${paymentHash}`,
+        paymentUrl: `/invoice-status/${paymentHash}?token=${statusToken}`,
         amountSats: requestedAmount,
         creditSats,
         macaroon,

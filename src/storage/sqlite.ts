@@ -27,6 +27,7 @@ export function sqliteStorage(config?: SqliteStorageConfig): StorageBackend {
       bolt11 TEXT NOT NULL,
       amount_sats INTEGER NOT NULL,
       macaroon TEXT NOT NULL,
+      status_token TEXT NOT NULL,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `)
@@ -34,6 +35,7 @@ export function sqliteStorage(config?: SqliteStorageConfig): StorageBackend {
   db.exec(`
     CREATE TABLE IF NOT EXISTS settlements (
       payment_hash TEXT PRIMARY KEY,
+      settlement_secret TEXT,
       settled_at TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `)
@@ -50,6 +52,25 @@ export function sqliteStorage(config?: SqliteStorageConfig): StorageBackend {
   // Migration: add lease_expires_at column if upgrading from older schema
   try {
     db.exec('ALTER TABLE claims ADD COLUMN lease_expires_at TEXT')
+  } catch {
+    // Column already exists — ignore
+  }
+
+  // Migration: add status_token column and backfill older rows.
+  try {
+    db.exec('ALTER TABLE invoices ADD COLUMN status_token TEXT')
+  } catch {
+    // Column already exists — ignore
+  }
+  db.exec(`
+    UPDATE invoices
+    SET status_token = lower(hex(randomblob(32)))
+    WHERE status_token IS NULL OR status_token = ''
+  `)
+
+  // Migration: add settlement_secret column to older schemas.
+  try {
+    db.exec('ALTER TABLE settlements ADD COLUMN settlement_secret TEXT')
   } catch {
     // Column already exists — ignore
   }
@@ -72,20 +93,30 @@ export function sqliteStorage(config?: SqliteStorageConfig): StorageBackend {
   )
 
   const stmtStoreInvoice = db.prepare(`
-    INSERT OR IGNORE INTO invoices (payment_hash, bolt11, amount_sats, macaroon)
-    VALUES (?, ?, ?, ?)
+    INSERT OR IGNORE INTO invoices (payment_hash, bolt11, amount_sats, macaroon, status_token)
+    VALUES (?, ?, ?, ?, ?)
   `)
 
   const stmtGetInvoice = db.prepare(
     'SELECT payment_hash, bolt11, amount_sats, macaroon, created_at FROM invoices WHERE payment_hash = ?'
   )
 
+  const stmtGetInvoiceForStatus = db.prepare(
+    `SELECT payment_hash, bolt11, amount_sats, macaroon, created_at
+     FROM invoices
+     WHERE payment_hash = ? AND status_token = ?`
+  )
+
   const stmtSettle = db.prepare(
-    'INSERT OR IGNORE INTO settlements (payment_hash) VALUES (?)'
+    'INSERT OR IGNORE INTO settlements (payment_hash, settlement_secret) VALUES (?, ?)'
   )
 
   const stmtIsSettled = db.prepare(
     'SELECT 1 FROM settlements WHERE payment_hash = ?'
+  )
+
+  const stmtGetSettlementSecret = db.prepare(
+    'SELECT settlement_secret FROM settlements WHERE payment_hash = ?'
   )
 
   const stmtClaim = db.prepare(
@@ -131,8 +162,8 @@ export function sqliteStorage(config?: SqliteStorageConfig): StorageBackend {
     return r.changes > 0
   })
 
-  const txnSettleWithCredit = db.transaction((paymentHash: string, amount: number) => {
-    const r = stmtSettle.run(paymentHash)
+  const txnSettleWithCredit = db.transaction((paymentHash: string, amount: number, settlementSecret?: string) => {
+    const r = stmtSettle.run(paymentHash, settlementSecret ?? null)
     if (r.changes > 0) {
       stmtCredit.run(paymentHash, amount)
       stmtDeleteClaim.run(paymentHash)
@@ -185,7 +216,7 @@ export function sqliteStorage(config?: SqliteStorageConfig): StorageBackend {
     },
 
     settle(paymentHash: string): boolean {
-      const result = stmtSettle.run(paymentHash)
+      const result = stmtSettle.run(paymentHash, null)
       return result.changes > 0
     },
 
@@ -193,8 +224,13 @@ export function sqliteStorage(config?: SqliteStorageConfig): StorageBackend {
       return !!stmtIsSettled.get(paymentHash)
     },
 
-    settleWithCredit(paymentHash: string, amount: number): boolean {
-      return txnSettleWithCredit(paymentHash, amount)
+    settleWithCredit(paymentHash: string, amount: number, settlementSecret?: string): boolean {
+      return txnSettleWithCredit(paymentHash, amount, settlementSecret)
+    },
+
+    getSettlementSecret(paymentHash: string): string | undefined {
+      const row = stmtGetSettlementSecret.get(paymentHash) as { settlement_secret: string | null } | undefined
+      return row?.settlement_secret ?? undefined
     },
 
     claimForRedeem(paymentHash: string, token: string, leaseMs?: number): boolean {
@@ -227,12 +263,30 @@ export function sqliteStorage(config?: SqliteStorageConfig): StorageBackend {
       return result.changes > 0
     },
 
-    storeInvoice(paymentHash: string, bolt11: string, amountSats: number, macaroon: string): void {
-      stmtStoreInvoice.run(paymentHash, bolt11, amountSats, macaroon)
+    storeInvoice(paymentHash: string, bolt11: string, amountSats: number, macaroon: string, statusToken: string): void {
+      stmtStoreInvoice.run(paymentHash, bolt11, amountSats, macaroon, statusToken)
     },
 
     getInvoice(paymentHash: string): StoredInvoice | undefined {
       const row = stmtGetInvoice.get(paymentHash) as {
+        payment_hash: string
+        bolt11: string
+        amount_sats: number
+        macaroon: string
+        created_at: string
+      } | undefined
+      if (!row) return undefined
+      return {
+        paymentHash: row.payment_hash,
+        bolt11: row.bolt11,
+        amountSats: row.amount_sats,
+        macaroon: row.macaroon,
+        createdAt: row.created_at,
+      }
+    },
+
+    getInvoiceForStatus(paymentHash: string, statusToken: string): StoredInvoice | undefined {
+      const row = stmtGetInvoiceForStatus.get(paymentHash, statusToken) as {
         payment_hash: string
         bolt11: string
         amount_sats: number

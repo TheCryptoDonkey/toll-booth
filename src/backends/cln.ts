@@ -5,6 +5,8 @@ export interface ClnConfig {
   url: string
   /** Rune token for authentication. */
   rune: string
+  /** Request timeout in ms (default: 30000) */
+  timeout?: number
 }
 
 /**
@@ -20,6 +22,7 @@ export interface ClnConfig {
  */
 export function clnBackend(config: ClnConfig): LightningBackend {
   const baseUrl = config.url.replace(/\/$/, '')
+  const timeoutMs = config.timeout ?? 30_000
   const headers: Record<string, string> = {
     'Rune': config.rune,
   }
@@ -36,6 +39,7 @@ export function clnBackend(config: ClnConfig): LightningBackend {
           label,
           description: memo ?? 'toll-booth payment',
         }),
+        signal: AbortSignal.timeout(timeoutMs),
       })
 
       if (!res.ok) {
@@ -50,7 +54,7 @@ export function clnBackend(config: ClnConfig): LightningBackend {
     async checkInvoice(paymentHash: string): Promise<InvoiceStatus> {
       const res = await fetch(
         `${baseUrl}/v1/listinvoices?payment_hash=${paymentHash}`,
-        { headers },
+        { headers, signal: AbortSignal.timeout(timeoutMs) },
       )
 
       if (!res.ok) {

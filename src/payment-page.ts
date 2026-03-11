@@ -7,6 +7,7 @@ export interface PaymentPageData {
   invoice: StoredInvoice
   paid: boolean
   preimage?: string
+  tokenSuffix?: string
   tiers: CreditTier[]
   nwcEnabled: boolean
   cashuEnabled: boolean
@@ -18,7 +19,7 @@ export interface PaymentPageErrorData {
 }
 
 export async function renderPaymentPage(data: PaymentPageData): Promise<string> {
-  const { invoice, paid, preimage, tiers, nwcEnabled, cashuEnabled } = data
+  const { invoice, paid, preimage, tokenSuffix, tiers, nwcEnabled, cashuEnabled } = data
   const qrSvg = await QRCode.toString(`lightning:${invoice.bolt11}`.toUpperCase(), { type: 'svg', margin: 2 })
 
   return `<!DOCTYPE html>
@@ -73,7 +74,7 @@ h1{font-size:1.4rem;text-align:center;margin-bottom:1.5rem;color:#fff}
   data-cashu="${cashuEnabled}"
 >
 
-${paid ? renderPaidState(invoice, preimage!) : renderAwaitingState(invoice, qrSvg, tiers, nwcEnabled, cashuEnabled)}
+${paid ? renderPaidState(invoice, preimage, tokenSuffix) : renderAwaitingState(invoice, qrSvg, tiers, nwcEnabled, cashuEnabled)}
 
 <div class="info">Powered by <strong>toll-booth</strong> &middot; L402</div>
 </div>
@@ -149,24 +150,37 @@ ${tiersHtml}
 </div>`
 }
 
-function renderPaidState(invoice: StoredInvoice, preimage: string): string {
+function renderPaidState(invoice: StoredInvoice, preimage?: string, tokenSuffix?: string): string {
+  const effectiveSuffix = preimage ?? tokenSuffix
+  const tokenLabel = preimage
+    ? 'L402 Token (macaroon:preimage)'
+    : 'L402 Token'
+  const tokenValue = effectiveSuffix
+    ? `${esc(invoice.macaroon)}:${esc(effectiveSuffix)}`
+    : undefined
+  const preimageHtml = preimage
+    ? `
+<div>
+  <div class="token-label">Payment preimage</div>
+  <div class="token-box" id="preimage">${esc(preimage)}</div>
+</div>
+`
+    : ''
+
   return `
 <h1>Payment Complete</h1>
 <div class="status status-paid" id="status">Invoice paid successfully</div>
 <div class="success-icon">&#9889;</div>
 <div class="credit-bal" id="credit-bal">${formatSats(invoice.amountSats)} sats credited</div>
 
-<div>
-  <div class="token-label">Payment preimage</div>
-  <div class="token-box" id="preimage">${esc(preimage)}</div>
-</div>
+${preimageHtml}
 
 <div>
-  <div class="token-label">L402 Token (macaroon:preimage)</div>
-  <div class="token-box" id="l402-token">${esc(invoice.macaroon)}:${esc(preimage)}</div>
+  <div class="token-label">${tokenLabel}</div>
+  <div class="token-box" id="l402-token">${tokenValue ?? 'Unavailable'}</div>
 </div>
 
-<button class="btn btn-success" onclick="copyToken()">Copy L402 Token</button>`
+${tokenValue ? '<button class="btn btn-success" onclick="copyToken()">Copy L402 Token</button>' : ''}`
 }
 
 function clientScript(): string {
@@ -174,6 +188,8 @@ function clientScript(): string {
 (function(){
   var card = document.getElementById('card');
   var hash = card.dataset.paymentHash;
+  var statusUrl = window.location.pathname + window.location.search;
+  var statusToken = new URLSearchParams(window.location.search).get('token') || '';
   if (card.dataset.paid === 'true') return;
 
   // Detect WebLN
@@ -183,12 +199,12 @@ function clientScript(): string {
 
   // Poll for payment
   var pollInterval = setInterval(function(){
-    fetch('/invoice-status/' + hash, {headers:{'Accept':'application/json'}})
+    fetch(statusUrl, {headers:{'Accept':'application/json'}})
       .then(function(r){return r.json()})
       .then(function(d){
         if(d.paid){
           clearInterval(pollInterval);
-          showPaid(d.preimage);
+          showPaid(d.preimage, 0, null, d.token_suffix);
         }
       })
       .catch(function(){});
@@ -245,16 +261,21 @@ function clientScript(): string {
       card.dataset.paymentHash = d.payment_hash;
       if (d.macaroon) card.dataset.macaroon = d.macaroon;
       // Update browser URL without reload
-      if (d.payment_url) history.replaceState(null, '', d.payment_url);
+      if (d.payment_url) {
+        statusUrl = d.payment_url;
+        var parsedUrl = new URL(d.payment_url, window.location.origin);
+        statusToken = parsedUrl.searchParams.get('token') || '';
+        history.replaceState(null, '', d.payment_url);
+      }
       // Restart polling with new hash
       clearInterval(pollInterval);
       pollInterval = setInterval(function(){
-        fetch('/invoice-status/' + hash, {headers:{'Accept':'application/json'}})
+        fetch(statusUrl, {headers:{'Accept':'application/json'}})
           .then(function(r){return r.json()})
           .then(function(d){
             if(d.paid){
               clearInterval(pollInterval);
-              showPaid(d.preimage);
+              showPaid(d.preimage, 0, null, d.token_suffix);
             }
           })
           .catch(function(){});
@@ -278,11 +299,11 @@ function clientScript(): string {
     fetch('/nwc-pay', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({nwcUri: uri, bolt11: invoice, paymentHash: hash})
+      body: JSON.stringify({nwcUri: uri, bolt11: invoice, paymentHash: hash, statusToken: statusToken})
     })
     .then(function(r){return r.json()})
     .then(function(d){
-      if (d.preimage) showPaid(d.preimage);
+      if (d.preimage) showPaid(d.preimage, 0, null, d.token_suffix);
       else if (d.error) alert(d.error);
     })
     .catch(function(e){ alert('NWC payment failed: ' + e.message) });
@@ -294,13 +315,13 @@ function clientScript(): string {
     fetch('/cashu-redeem', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({token: token, paymentHash: hash})
+      body: JSON.stringify({token: token, paymentHash: hash, statusToken: statusToken})
     })
     .then(function(r){return r.json()})
     .then(function(d){
       if (d.error) { alert(d.error); return; }
       var mac = d.macaroon || card.dataset.macaroon;
-      showPaid(null, d.credited, mac);
+      showPaid(null, d.credited, mac, d.token_suffix);
     })
     .catch(function(e){ alert('Cashu redemption failed: ' + e.message) });
   };
@@ -308,7 +329,7 @@ function clientScript(): string {
   function escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
   function fmtSats(n){return Number(n).toLocaleString('en-GB')}
 
-  function showPaid(preimage, creditedAmount, cashuMacaroon){
+  function showPaid(preimage, creditedAmount, cashuMacaroon, tokenSuffix){
     clearInterval(pollInterval);
     var status = document.getElementById('status');
     status.className = 'status status-paid';
@@ -349,9 +370,8 @@ function clientScript(): string {
         successHtml += '<div><div class="token-label">L402 Token (macaroon:preimage)</div><div class="token-box" id="l402-token">' + macStr + ':' + safePreimage + '</div></div>';
         successHtml += '<button class="btn btn-success" onclick="copyToken()">Copy L402 Token</button>';
       }
-    } else if (macStr) {
-      // Cashu path: no preimage, use "settled" as the auth placeholder
-      successHtml += '<div><div class="token-label">L402 Token</div><div class="token-box" id="l402-token">' + macStr + ':settled</div></div>';
+    } else if (macStr && tokenSuffix) {
+      successHtml += '<div><div class="token-label">L402 Token</div><div class="token-box" id="l402-token">' + macStr + ':' + escHtml(tokenSuffix) + '</div></div>';
       successHtml += '<button class="btn btn-success" onclick="copyToken()">Copy L402 Token</button>';
     }
     status.insertAdjacentHTML('afterend', successHtml);

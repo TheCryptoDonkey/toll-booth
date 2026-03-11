@@ -5,6 +5,8 @@ export interface LNbitsConfig {
   url: string
   /** Invoice/read API key from the LNbits wallet */
   apiKey: string
+  /** Request timeout in ms (default: 30000) */
+  timeout?: number
 }
 
 /**
@@ -21,6 +23,7 @@ export interface LNbitsConfig {
  */
 export function lnbitsBackend(config: LNbitsConfig): LightningBackend {
   const baseUrl = config.url.replace(/\/$/, '')
+  const timeoutMs = config.timeout ?? 30_000
   const headers: Record<string, string> = {
     'X-Api-Key': config.apiKey,
     'Content-Type': 'application/json',
@@ -36,6 +39,7 @@ export function lnbitsBackend(config: LNbitsConfig): LightningBackend {
           amount: amountSats,
           memo: memo ?? 'toll-booth payment',
         }),
+        signal: AbortSignal.timeout(timeoutMs),
       })
 
       if (!res.ok) {
@@ -50,6 +54,7 @@ export function lnbitsBackend(config: LNbitsConfig): LightningBackend {
     async checkInvoice(paymentHash: string): Promise<InvoiceStatus> {
       const res = await fetch(`${baseUrl}/api/v1/payments/${paymentHash}`, {
         headers: { 'X-Api-Key': config.apiKey },
+        signal: AbortSignal.timeout(timeoutMs),
       })
 
       if (res.status === 404) return { paid: false }

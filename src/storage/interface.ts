@@ -28,7 +28,9 @@ export interface StorageBackend {
   /** Check whether a payment hash has been settled. */
   isSettled(paymentHash: string): boolean
   /** Atomically settle and credit in one operation. Returns true if newly settled, false if already was. */
-  settleWithCredit(paymentHash: string, amount: number): boolean
+  settleWithCredit(paymentHash: string, amount: number, settlementSecret?: string): boolean
+  /** Optional secret required for non-preimage L402 authorisation after settlement (e.g. Cashu flow). */
+  getSettlementSecret(paymentHash: string): string | undefined
   /**
    * Write-ahead claim with an exclusive lease before an irreversible external call.
    * Returns true if newly claimed, false if already claimed or settled.
@@ -49,7 +51,8 @@ export interface StorageBackend {
    * Returns true if extended, false if missing/settled/expired.
    */
   extendRecoveryLease(paymentHash: string, leaseMs: number): boolean
-  storeInvoice(paymentHash: string, bolt11: string, amountSats: number, macaroon: string): void
+  storeInvoice(paymentHash: string, bolt11: string, amountSats: number, macaroon: string, statusToken: string): void
   getInvoice(paymentHash: string): StoredInvoice | undefined
+  getInvoiceForStatus(paymentHash: string, statusToken: string): StoredInvoice | undefined
   close(): void
 }

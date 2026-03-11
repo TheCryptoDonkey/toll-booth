@@ -57,5 +57,6 @@ export interface InvoiceStatusResult {
   found: boolean
   paid: boolean
   preimage?: string
+  tokenSuffix?: string
   invoice?: StoredInvoice
 }

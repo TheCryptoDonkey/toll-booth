@@ -29,6 +29,7 @@ describe('phoenixdBackend', () => {
       expect(url).toBe('http://localhost:9740/createinvoice')
       expect(opts.method).toBe('POST')
       expect(opts.headers['Authorization']).toMatch(/^Basic /)
+      expect(opts.signal).toBeInstanceOf(AbortSignal)
       expect(opts.body.toString()).toContain('amountSat=100')
       expect(opts.body.toString()).toContain('description=test+memo')
       expect(invoice.bolt11).toBe('lnbc1500n1pw5kjhm...')
@@ -59,8 +60,9 @@ describe('phoenixdBackend', () => {
       const status = await backend.checkInvoice('abc123')
 
       expect(mockFetch).toHaveBeenCalledOnce()
-      const [url] = mockFetch.mock.calls[0]
+      const [url, opts] = mockFetch.mock.calls[0]
       expect(url).toBe('http://localhost:9740/payments/incoming/abc123')
+      expect(opts.signal).toBeInstanceOf(AbortSignal)
       expect(status.paid).toBe(true)
       expect(status.preimage).toBe('def456')
     })

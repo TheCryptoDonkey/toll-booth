@@ -3,6 +3,8 @@ import type { LightningBackend, Invoice, InvoiceStatus } from '../types.js'
 export interface PhoenixdConfig {
   url: string
   password: string
+  /** Request timeout in ms (default: 30000) */
+  timeout?: number
 }
 
 /**
@@ -18,6 +20,7 @@ export interface PhoenixdConfig {
 export function phoenixdBackend(config: PhoenixdConfig): LightningBackend {
   const baseUrl = config.url.replace(/\/$/, '')
   const authHeader = 'Basic ' + Buffer.from(`:${config.password}`).toString('base64')
+  const timeoutMs = config.timeout ?? 30_000
 
   return {
     async createInvoice(amountSats: number, memo?: string): Promise<Invoice> {
@@ -33,6 +36,7 @@ export function phoenixdBackend(config: PhoenixdConfig): LightningBackend {
           'Content-Type': 'application/x-www-form-urlencoded',
         },
         body,
+        signal: AbortSignal.timeout(timeoutMs),
       })
 
       if (!res.ok) {
@@ -47,6 +51,7 @@ export function phoenixdBackend(config: PhoenixdConfig): LightningBackend {
     async checkInvoice(paymentHash: string): Promise<InvoiceStatus> {
       const res = await fetch(`${baseUrl}/payments/incoming/${paymentHash}`, {
         headers: { 'Authorization': authHeader },
+        signal: AbortSignal.timeout(timeoutMs),
       })
 
       // 404 = invoice not found (normal for unknown hashes)

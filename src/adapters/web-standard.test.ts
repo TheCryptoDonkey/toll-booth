@@ -3,7 +3,11 @@ import { describe, it, expect, vi } from 'vitest'
 import { randomBytes } from 'node:crypto'
 import { createTollBooth } from '../core/toll-booth.js'
 import { memoryStorage } from '../storage/memory.js'
-import { createWebStandardMiddleware, createWebStandardCreateInvoiceHandler } from './web-standard.js'
+import {
+  createWebStandardMiddleware,
+  createWebStandardCreateInvoiceHandler,
+  createWebStandardInvoiceStatusHandler,
+} from './web-standard.js'
 import type { LightningBackend } from '../types.js'
 
 const ROOT_KEY = randomBytes(32).toString('hex')
@@ -126,5 +130,29 @@ describe('Web Standard adapter', () => {
     expect(body).toHaveProperty('bolt11')
     expect(body).toHaveProperty('payment_hash')
     expect(body).toHaveProperty('amount_sats', 1000)
+  })
+
+  it('requires the invoice status token for JSON status checks', async () => {
+    const backend = mockBackend()
+    const storage = memoryStorage()
+    const paymentHash = 'b'.repeat(64)
+    storage.storeInvoice(paymentHash, 'lnbc100n1mock...', 1000, 'mac_token', 'status-token')
+
+    const handler = createWebStandardInvoiceStatusHandler({ backend, storage })
+
+    const missingToken = await handler(
+      new Request(`http://localhost/invoice-status/${paymentHash}`, {
+        headers: { Accept: 'application/json' },
+      }),
+    )
+    expect(missingToken.status).toBe(404)
+
+    const ok = await handler(
+      new Request(`http://localhost/invoice-status/${paymentHash}?token=status-token`, {
+        headers: { Accept: 'application/json' },
+      }),
+    )
+    expect(ok.status).toBe(200)
+    expect(await ok.json()).toEqual({ paid: false })
   })
 })

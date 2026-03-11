@@ -30,6 +30,7 @@ describe('clnBackend', () => {
       expect(opts.method).toBe('POST')
       expect(opts.headers['Rune']).toBe('test-rune-token')
       expect(opts.headers['Content-Type']).toBe('application/json')
+      expect(opts.signal).toBeInstanceOf(AbortSignal)
 
       const body = JSON.parse(opts.body)
       expect(body.amount_msat).toBe(100_000)
@@ -80,8 +81,9 @@ describe('clnBackend', () => {
 
       const status = await backend.checkInvoice('d'.repeat(64))
 
-      const [url] = mockFetch.mock.calls[0]
+      const [url, opts] = mockFetch.mock.calls[0]
       expect(url).toBe('https://localhost:3010/v1/listinvoices?payment_hash=' + 'd'.repeat(64))
+      expect(opts.signal).toBeInstanceOf(AbortSignal)
       expect(status.paid).toBe(true)
       expect(status.preimage).toBe('c'.repeat(64))
     })

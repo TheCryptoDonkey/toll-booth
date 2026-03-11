@@ -121,9 +121,9 @@ export function createHonoMiddleware(config: HonoMiddlewareConfig): MiddlewareHa
 /**
  * Returns a Hono handler that serves invoice status as JSON or HTML.
  *
- * Expects `:paymentHash` route param. When `Accept: text/html` is
- * requested, renders the self-service payment page; otherwise returns
- * a JSON payload with `{ paid, preimage }`.
+ * Expects `:paymentHash` route param plus a `?token=...` status lookup secret.
+ * When `Accept: text/html` is requested, renders the self-service payment page;
+ * otherwise returns a JSON payload with `{ paid, preimage }`.
  */
 export function createHonoInvoiceStatusHandler(
   deps: InvoiceStatusDeps,
@@ -133,16 +133,20 @@ export function createHonoInvoiceStatusHandler(
     if (!PAYMENT_HASH_RE.test(paymentHash)) {
       return c.json({ error: 'Invalid payment hash' }, 400)
     }
+    const statusToken = c.req.query('token') ?? undefined
     const accept = c.req.header('Accept') ?? ''
 
     try {
       if (accept.includes('text/html')) {
-        const { html, status } = await renderInvoiceStatusHtml(deps, paymentHash)
+        const { html, status } = await renderInvoiceStatusHtml(deps, paymentHash, statusToken)
         return c.html(html, status as 200)
       }
 
-      const result = await handleInvoiceStatus(deps, paymentHash)
-      return c.json({ paid: result.paid, preimage: result.preimage })
+      const result = await handleInvoiceStatus(deps, paymentHash, statusToken)
+      if (!result.found) {
+        return c.json({ error: 'Invoice not found' }, 404)
+      }
+      return c.json({ paid: result.paid, preimage: result.preimage, token_suffix: result.tokenSuffix })
     } catch {
       return c.json({ error: 'Failed to check invoice status' }, 502)
     }
@@ -186,16 +190,35 @@ export function createHonoCreateInvoiceHandler(
 /**
  * Returns a Hono handler that pays a Lightning invoice via Nostr Wallet Connect.
  *
- * Expects JSON body with `{ nwcUri, bolt11 }`. Returns the payment preimage
- * on success or an error message on failure.
+ * Expects JSON body with `{ nwcUri, bolt11, paymentHash, statusToken }`.
+ * Binds the request to an issued invoice before invoking `nwcPay`.
+ * Returns the payment preimage on success or an error message on failure.
  */
 export function createHonoNwcHandler(
   nwcPay: (nwcUri: string, bolt11: string) => Promise<string>,
+  storage: StorageBackend,
 ): (c: Context) => Promise<Response> {
   return async (c) => {
     try {
-      const { nwcUri, bolt11 } = await c.req.json()
-      const preimage = await nwcPay(nwcUri, bolt11)
+      const { nwcUri, bolt11, paymentHash, statusToken } = await c.req.json()
+      if (
+        typeof nwcUri !== 'string' ||
+        !nwcUri ||
+        typeof bolt11 !== 'string' ||
+        !bolt11 ||
+        !PAYMENT_HASH_RE.test(paymentHash) ||
+        typeof statusToken !== 'string' ||
+        !statusToken
+      ) {
+        return c.json({ error: 'Invalid request: nwcUri, bolt11, paymentHash and statusToken required' }, 400)
+      }
+
+      const invoice = storage.getInvoiceForStatus(paymentHash, statusToken)
+      if (!invoice || invoice.bolt11 !== bolt11) {
+        return c.json({ error: 'Unknown invoice or invoice mismatch' }, 400)
+      }
+
+      const preimage = await nwcPay(nwcUri, invoice.bolt11)
       return c.json({ preimage })
     } catch (err) {
       const message = err instanceof Error ? err.message : 'NWC payment failed'
@@ -209,7 +232,7 @@ export function createHonoNwcHandler(
 /**
  * Returns a Hono handler that redeems a Cashu token as payment.
  *
- * Expects JSON body with `{ token, paymentHash }`. Uses a durable
+ * Expects JSON body with `{ token, paymentHash, statusToken }`. Uses a durable
  * write-ahead claim (persisted to storage) before calling the external
  * Cashu mint, so that:
  * - Multiple app instances sharing the same DB cannot both call redeem()
@@ -241,20 +264,30 @@ export function createHonoCashuHandler(
 ): (c: Context) => Promise<Response> {
   return async (c) => {
     try {
-      const { token, paymentHash } = await c.req.json()
-      if (typeof token !== 'string' || !token || !PAYMENT_HASH_RE.test(paymentHash)) {
-        return c.json({ error: 'Invalid request: token (string) and paymentHash (64 hex chars) required' }, 400)
+      const { token, paymentHash, statusToken } = await c.req.json()
+      if (
+        typeof token !== 'string' ||
+        !token ||
+        !PAYMENT_HASH_RE.test(paymentHash) ||
+        typeof statusToken !== 'string' ||
+        !statusToken
+      ) {
+        return c.json({ error: 'Invalid request: token, paymentHash, and statusToken required' }, 400)
       }
 
-      // Reject unknown payment hashes — must have been issued by this server
-      if (!storage.getInvoice(paymentHash) && !storage.isSettled(paymentHash)) {
-        return c.json({ error: 'Unknown payment hash — no invoice found for this hash' }, 400)
+      const invoice = storage.getInvoiceForStatus(paymentHash, statusToken)
+      if (!invoice) {
+        return c.json({ error: 'Unknown payment hash or invalid status token' }, 400)
       }
 
-      // Fast path: already settled
+      // Fast path: already settled — don't return macaroon (client already has it
+      // from the 402 challenge). Only return the settlement secret so the client
+      // can construct the L402 token.
       if (storage.isSettled(paymentHash)) {
-        const invoice = storage.getInvoice(paymentHash)
-        return c.json({ credited: 0, macaroon: invoice?.macaroon })
+        return c.json({
+          credited: 0,
+          token_suffix: storage.getSettlementSecret(paymentHash),
+        })
       }
 
       // Durable claim with exclusive lease — written to DB before the
@@ -262,8 +295,10 @@ export function createHonoCashuHandler(
       if (!storage.claimForRedeem(paymentHash, token, REDEEM_LEASE_MS)) {
         // Already settled — idempotent success
         if (storage.isSettled(paymentHash)) {
-          const invoice = storage.getInvoice(paymentHash)
-          return c.json({ credited: 0, macaroon: invoice?.macaroon })
+          return c.json({
+            credited: 0,
+            token_suffix: storage.getSettlementSecret(paymentHash),
+          })
         }
 
         // Pending claim exists — try to acquire exclusive recovery lease.
@@ -274,9 +309,12 @@ export function createHonoCashuHandler(
             const credited = await withLeaseKeepAlive(storage, paymentHash, () =>
               redeem(pendingClaim.token, paymentHash),
             )
-            const newlySettled = storage.settleWithCredit(paymentHash, credited)
-            const invoice = storage.getInvoice(paymentHash)
-            return c.json({ credited: newlySettled ? credited : 0, macaroon: invoice?.macaroon })
+            const settlementSecret = globalThis.crypto.randomUUID()
+            const newlySettled = storage.settleWithCredit(paymentHash, credited, settlementSecret)
+            return c.json({
+              credited: newlySettled ? credited : 0,
+              token_suffix: newlySettled ? settlementSecret : storage.getSettlementSecret(paymentHash),
+            })
           } catch {
             // Recovery also failed — lease will expire, allowing future retry
             return c.json({ state: 'pending', retryAfterMs: 2000 }, 202)
@@ -292,9 +330,12 @@ export function createHonoCashuHandler(
         const credited = await withLeaseKeepAlive(storage, paymentHash, () =>
           redeem(token, paymentHash),
         )
-        const newlySettled = storage.settleWithCredit(paymentHash, credited)
-        const invoice = storage.getInvoice(paymentHash)
-        return c.json({ credited: newlySettled ? credited : 0, macaroon: invoice?.macaroon })
+        const settlementSecret = globalThis.crypto.randomUUID()
+        const newlySettled = storage.settleWithCredit(paymentHash, credited, settlementSecret)
+        return c.json({
+          credited: newlySettled ? credited : 0,
+          token_suffix: newlySettled ? settlementSecret : storage.getSettlementSecret(paymentHash),
+        })
       } catch {
         // Mint call failed — claim stays pending, lease will expire for recovery
         return c.json({ state: 'pending', retryAfterMs: 2000 }, 202)

@@ -129,9 +129,9 @@ export function createExpressMiddleware(
 /**
  * Returns an Express `RequestHandler` that serves invoice status as JSON or HTML.
  *
- * Expects `:paymentHash` route param. When `Accept: text/html` is requested,
- * renders the self-service payment page; otherwise returns JSON with
- * `{ paid, preimage }`.
+ * Expects `:paymentHash` route param plus a `?token=...` status lookup secret.
+ * When `Accept: text/html` is requested, renders the self-service payment page;
+ * otherwise returns JSON with `{ paid, preimage }`.
  */
 export function createExpressInvoiceStatusHandler(
   deps: InvoiceStatusDeps,
@@ -144,17 +144,22 @@ export function createExpressInvoiceStatusHandler(
       res.status(400).json({ error: 'Invalid payment hash' })
       return
     }
+    const statusToken = typeof req.query.token === 'string' ? req.query.token : undefined
     const accept = req.headers.accept ?? ''
 
     try {
       if (accept.includes('text/html')) {
-        const { html, status } = await renderInvoiceStatusHtml(deps, paymentHash)
+        const { html, status } = await renderInvoiceStatusHtml(deps, paymentHash, statusToken)
         res.status(status).type('html').send(html)
         return
       }
 
-      const result = await handleInvoiceStatus(deps, paymentHash)
-      res.json({ paid: result.paid, preimage: result.preimage })
+      const result = await handleInvoiceStatus(deps, paymentHash, statusToken)
+      if (!result.found) {
+        res.status(404).json({ error: 'Invoice not found' })
+        return
+      }
+      res.json({ paid: result.paid, preimage: result.preimage, token_suffix: result.tokenSuffix })
     } catch {
       res.status(502).json({ error: 'Failed to check invoice status' })
     }

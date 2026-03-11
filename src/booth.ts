@@ -140,7 +140,7 @@ export class Booth {
         this.invoiceStatusHandler = createHonoInvoiceStatusHandler(invoiceStatusDeps)
         this.createInvoiceHandler = createHonoCreateInvoiceHandler(createInvoiceDeps)
         if (config.nwcPayInvoice) {
-          this.nwcPayHandler = createHonoNwcHandler(config.nwcPayInvoice)
+          this.nwcPayHandler = createHonoNwcHandler(config.nwcPayInvoice, this.storage)
         }
         if (config.redeemCashu) {
           this.redeemCashu = config.redeemCashu

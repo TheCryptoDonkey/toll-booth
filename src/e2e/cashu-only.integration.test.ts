@@ -12,6 +12,13 @@ import { memoryStorage } from '../storage/memory.js'
 const MINT_URL = process.env.CASHU_MINT_URL ?? 'http://localhost:13338'
 const RUN_INTEGRATION = process.env.RUN_INTEGRATION === 'true'
 
+function extractStatusToken(paymentUrl: string): string {
+  const url = new URL(paymentUrl, 'http://localhost')
+  const token = url.searchParams.get('token')
+  if (!token) throw new Error('payment_url is missing token')
+  return token
+}
+
 /** Mint fresh Cashu proofs from the Nutshell FakeWallet. */
 async function mintProofs(wallet: Wallet, amount: number): Promise<Proof[]> {
   const quote = await wallet.createMintQuoteBolt11(amount)
@@ -83,7 +90,9 @@ describe.skipIf(!RUN_INTEGRATION)('Cashu-only mode integration (requires Nutshel
       payment_hash: string
       macaroon: string
       amount_sats: number
+      payment_url: string
     }
+    const statusToken = extractStatusToken(challenge.payment_url)
 
     // 2. Mint Cashu proofs for the invoice amount
     const proofs = await mintProofs(wallet, challenge.amount_sats)
@@ -95,17 +104,18 @@ describe.skipIf(!RUN_INTEGRATION)('Cashu-only mode integration (requires Nutshel
     const redeemRes = await app.request('/cashu-redeem', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token, paymentHash: challenge.payment_hash }),
+      body: JSON.stringify({ token, paymentHash: challenge.payment_hash, statusToken }),
     })
 
     expect(redeemRes.status).toBe(200)
-    const redeemBody = await redeemRes.json() as { credited: number; macaroon: string }
+    const redeemBody = await redeemRes.json() as { credited: number; macaroon: string; token_suffix: string }
     expect(redeemBody.credited).toBe(challenge.amount_sats)
     expect(redeemBody.macaroon).toBeTruthy()
+    expect(redeemBody.token_suffix).toBeTruthy()
 
     // 4. Use macaroon to access gated endpoint
     const authedRes = await app.request('/api/data', {
-      headers: { Authorization: `L402 ${challenge.macaroon}:settled` },
+      headers: { Authorization: `L402 ${challenge.macaroon}:${redeemBody.token_suffix}` },
     })
 
     // Won't be 200 (upstream not running) but MUST NOT be 402
@@ -118,10 +128,12 @@ describe.skipIf(!RUN_INTEGRATION)('Cashu-only mode integration (requires Nutshel
     const challenge = await challengeRes.json() as {
       payment_hash: string
       amount_sats: number
+      payment_url: string
     }
+    const statusToken = extractStatusToken(challenge.payment_url)
 
     // 2. Check status before payment — should be unpaid
-    const statusBefore = await app.request(`/invoice-status/${challenge.payment_hash}`)
+    const statusBefore = await app.request(challenge.payment_url)
     expect(statusBefore.status).toBe(200)
     const bodyBefore = await statusBefore.json() as { paid: boolean }
     expect(bodyBefore.paid).toBe(false)
@@ -132,11 +144,11 @@ describe.skipIf(!RUN_INTEGRATION)('Cashu-only mode integration (requires Nutshel
     await app.request('/cashu-redeem', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token, paymentHash: challenge.payment_hash }),
+      body: JSON.stringify({ token, paymentHash: challenge.payment_hash, statusToken }),
     })
 
     // 4. Check status after payment — should be paid
-    const statusAfter = await app.request(`/invoice-status/${challenge.payment_hash}`)
+    const statusAfter = await app.request(challenge.payment_url)
     expect(statusAfter.status).toBe(200)
     const bodyAfter = await statusAfter.json() as { paid: boolean }
     expect(bodyAfter.paid).toBe(true)

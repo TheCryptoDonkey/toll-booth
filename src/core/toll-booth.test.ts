@@ -204,26 +204,61 @@ describe('TollBoothEngine (core)', () => {
     expect(onPayment).toHaveBeenCalledTimes(1) // still only once
   })
 
-  it('accepts settled macaroon without preimage (Cashu path)', async () => {
+  it('accepts settled macaroon only with settlement secret (Cashu path)', async () => {
     const { paymentHash } = makePreimageAndHash()
     const storage = memoryStorage()
     const config = makeConfig({ storage })
     const engine = createTollBooth(config)
 
     const macaroon = mintMacaroon(ROOT_KEY, paymentHash, 1000)
+    const settlementSecret = 'cashu-settlement-secret'
 
-    // Simulate Cashu settlement: settle + credit externally
-    storage.settle(paymentHash)
-    storage.credit(paymentHash, 1000)
+    // Simulate Cashu settlement: settle + credit with settlement secret.
+    storage.settleWithCredit(paymentHash, 1000, settlementSecret)
 
-    // Use macaroon with a non-preimage value (as Cashu clients do)
+    // Placeholder suffix should be rejected.
     const req = makeRequest({
       headers: { authorization: `L402 ${macaroon}:settled` },
     })
+    const rejected = await engine.handle(req)
+    expect(rejected.action).toBe('challenge')
 
-    const result = await engine.handle(req)
+    // Settlement secret suffix should authorise.
+    const okReq = makeRequest({
+      headers: { authorization: `L402 ${macaroon}:${settlementSecret}` },
+    })
+
+    const result = await engine.handle(okReq)
     expect(result.action).toBe('proxy')
     if (result.action === 'proxy') expect(result.creditBalance).toBe(990)
+  })
+
+  it('rejects attacker who records macaroon from 402 and waits for settlement', async () => {
+    const { preimage, paymentHash } = makePreimageAndHash()
+    const storage = memoryStorage()
+    const engine = createTollBooth(makeConfig({ storage }))
+
+    // Attacker observes the macaroon from the 402 challenge
+    const macaroon = mintMacaroon(ROOT_KEY, paymentHash, 1000)
+
+    // Legitimate user settles via Lightning (stores preimage as secret)
+    storage.settleWithCredit(paymentHash, 1000, preimage)
+
+    // Attacker tries various guesses — all should fail
+    for (const fakeProof of ['settled', 'x'.repeat(64), '', 'garbage']) {
+      const req = makeRequest({
+        headers: { authorization: `L402 ${macaroon}:${fakeProof}` },
+      })
+      const result = await engine.handle(req)
+      expect(result.action).toBe('challenge')
+    }
+
+    // Only the real preimage works
+    const req = makeRequest({
+      headers: { authorization: `L402 ${macaroon}:${preimage}` },
+    })
+    const result = await engine.handle(req)
+    expect(result.action).toBe('proxy')
   })
 })
 
@@ -305,12 +340,13 @@ describe('Cashu-only mode (no Lightning backend)', () => {
     const paymentHash = challenge.body.payment_hash as string
     const macaroon = challenge.body.macaroon as string
 
-    // Simulate Cashu redemption: settle + credit externally
-    storage.settleWithCredit(paymentHash, 1000)
+    // Simulate Cashu redemption: settle + credit with a secret suffix.
+    const settlementSecret = 'cashu-settlement-secret'
+    storage.settleWithCredit(paymentHash, 1000, settlementSecret)
 
-    // Use macaroon with 'settled' preimage (as Cashu clients do)
+    // Use macaroon with settlement secret suffix.
     const req = makeRequest({
-      headers: { authorization: `L402 ${macaroon}:settled` },
+      headers: { authorization: `L402 ${macaroon}:${settlementSecret}` },
     })
 
     const result = await engine.handle(req)

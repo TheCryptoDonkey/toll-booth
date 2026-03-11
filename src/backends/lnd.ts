@@ -8,6 +8,8 @@ export interface LndConfig {
   macaroon?: string
   /** Path to admin.macaroon file (alternative to hex) */
   macaroonPath?: string
+  /** Request timeout in ms (default: 30000) */
+  timeout?: number
 }
 
 /**
@@ -20,6 +22,7 @@ export interface LndConfig {
  */
 export function lndBackend(config: LndConfig): LightningBackend {
   const baseUrl = config.url.replace(/\/$/, '')
+  const timeoutMs = config.timeout ?? 30_000
 
   let macaroonHex: string
   if (config.macaroon) {
@@ -39,6 +42,7 @@ export function lndBackend(config: LndConfig): LightningBackend {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ value: String(amountSats), memo: memo ?? '' }),
+        signal: AbortSignal.timeout(timeoutMs),
       })
 
       if (!res.ok) {
@@ -55,6 +59,7 @@ export function lndBackend(config: LndConfig): LightningBackend {
     async checkInvoice(paymentHash: string): Promise<InvoiceStatus> {
       const res = await fetch(`${baseUrl}/v1/invoice/${paymentHash}`, {
         headers: { 'Grpc-Metadata-macaroon': macaroonHex },
+        signal: AbortSignal.timeout(timeoutMs),
       })
 
       if (!res.ok) return { paid: false }

@@ -68,26 +68,31 @@ describe('albyBackend', () => {
   })
 
   it('throws if NWC URL is missing relay or secret', () => {
-    expect(() => albyBackend({ nwcUrl: 'nostr+walletconnect://pubkey' })).toThrow()
+    expect(() => albyBackend({ nwcUrl: 'nostr+walletconnect://pubkey', allowInsecureRelay: true })).toThrow()
     expect(() =>
-      albyBackend({ nwcUrl: 'nostr+walletconnect://pubkey?relay=wss://relay.example.com' }),
+      albyBackend({
+        nwcUrl: 'nostr+walletconnect://pubkey?relay=wss://relay.example.com',
+        allowInsecureRelay: true,
+      }),
     ).toThrow()
     expect(() =>
-      albyBackend({ nwcUrl: 'nostr+walletconnect://pubkey?secret=deadbeef' }),
+      albyBackend({
+        nwcUrl: 'nostr+walletconnect://pubkey?secret=deadbeef',
+        allowInsecureRelay: true,
+      }),
     ).toThrow()
   })
 
-  it('parses valid NWC URL without throwing', () => {
-    const backend = albyBackend({
+  it('throws unless insecure relay mode is explicitly enabled', () => {
+    expect(() => albyBackend({
       nwcUrl: 'nostr+walletconnect://pubkey?relay=wss://relay.example.com&secret=deadbeef',
-    })
-    expect(backend.createInvoice).toBeDefined()
-    expect(backend.checkInvoice).toBeDefined()
+    })).toThrow(/allowInsecureRelay/)
   })
 
   it('returns unpaid for unknown payment hash', async () => {
     const backend = albyBackend({
       nwcUrl: 'nostr+walletconnect://pubkey?relay=wss://relay.example.com&secret=deadbeef',
+      allowInsecureRelay: true,
     })
     const status = await backend.checkInvoice('unknown')
     expect(status).toEqual({ paid: false })
@@ -96,6 +101,7 @@ describe('albyBackend', () => {
   it('looks up settlement state for created invoices', async () => {
     const backend = albyBackend({
       nwcUrl: 'nostr+walletconnect://pubkey?relay=wss://relay.example.com&secret=deadbeef',
+      allowInsecureRelay: true,
     })
 
     const invoice = await backend.createInvoice(100, 'test memo')

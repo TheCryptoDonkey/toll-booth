@@ -14,6 +14,13 @@ import { createHash, randomBytes } from 'node:crypto'
 const MINT_URL = process.env.CASHU_MINT_URL ?? 'http://localhost:13338'
 const RUN_INTEGRATION = process.env.RUN_INTEGRATION === 'true'
 
+function extractStatusToken(paymentUrl: string): string {
+  const url = new URL(paymentUrl, 'http://localhost')
+  const token = url.searchParams.get('token')
+  if (!token) throw new Error('payment_url is missing token')
+  return token
+}
+
 /** Mint fresh Cashu proofs from the Nutshell FakeWallet. */
 async function mintProofs(wallet: Wallet, amount: number): Promise<Proof[]> {
   const quote = await wallet.createMintQuoteBolt11(amount)
@@ -89,7 +96,9 @@ describe.skipIf(!RUN_INTEGRATION)('Cashu redemption integration (requires Nutshe
       payment_hash: string
       macaroon: string
       amount_sats: number
+      payment_url: string
     }
+    const statusToken = extractStatusToken(challenge.payment_url)
 
     // 2. Mint Cashu proofs for the invoice amount
     const proofs = await mintProofs(wallet, challenge.amount_sats)
@@ -103,13 +112,14 @@ describe.skipIf(!RUN_INTEGRATION)('Cashu redemption integration (requires Nutshe
     const redeemRes = await app.request('/cashu-redeem', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token, paymentHash: challenge.payment_hash }),
+      body: JSON.stringify({ token, paymentHash: challenge.payment_hash, statusToken }),
     })
 
     expect(redeemRes.status).toBe(200)
-    const redeemBody = await redeemRes.json() as { credited: number; macaroon: string }
+    const redeemBody = await redeemRes.json() as { credited: number; macaroon: string; token_suffix: string }
     expect(redeemBody.credited).toBe(challenge.amount_sats)
     expect(redeemBody.macaroon).toBeTruthy()
+    expect(redeemBody.token_suffix).toBeTruthy()
   }, 30_000)
 
   it('idempotent: second redemption returns credited=0', async () => {
@@ -119,7 +129,9 @@ describe.skipIf(!RUN_INTEGRATION)('Cashu redemption integration (requires Nutshe
       payment_hash: string
       macaroon: string
       amount_sats: number
+      payment_url: string
     }
+    const statusToken = extractStatusToken(challenge.payment_url)
 
     // Mint and redeem
     const proofs = await mintProofs(wallet, challenge.amount_sats)
@@ -128,14 +140,14 @@ describe.skipIf(!RUN_INTEGRATION)('Cashu redemption integration (requires Nutshe
     await app.request('/cashu-redeem', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token, paymentHash: challenge.payment_hash }),
+      body: JSON.stringify({ token, paymentHash: challenge.payment_hash, statusToken }),
     })
 
     // Second redemption — already settled
     const res2 = await app.request('/cashu-redeem', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: 'cashuA_stale', paymentHash: challenge.payment_hash }),
+      body: JSON.stringify({ token: 'cashuA_stale', paymentHash: challenge.payment_hash, statusToken }),
     })
 
     expect(res2.status).toBe(200)
@@ -150,21 +162,24 @@ describe.skipIf(!RUN_INTEGRATION)('Cashu redemption integration (requires Nutshe
       payment_hash: string
       macaroon: string
       amount_sats: number
+      payment_url: string
     }
+    const statusToken = extractStatusToken(challenge.payment_url)
 
     // Mint + redeem
     const proofs = await mintProofs(wallet, challenge.amount_sats)
     const token = getEncodedTokenV4({ proofs, mint: MINT_URL })
 
-    await app.request('/cashu-redeem', {
+    const redeemRes = await app.request('/cashu-redeem', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token, paymentHash: challenge.payment_hash }),
+      body: JSON.stringify({ token, paymentHash: challenge.payment_hash, statusToken }),
     })
+    const redeemBody = await redeemRes.json() as { token_suffix: string }
 
-    // Use macaroon — Cashu path skips preimage check because already settled
+    // Use macaroon with settlement token suffix from redemption response
     const authedRes = await app.request('/api/data', {
-      headers: { Authorization: `L402 ${challenge.macaroon}:settled` },
+      headers: { Authorization: `L402 ${challenge.macaroon}:${redeemBody.token_suffix}` },
     })
 
     // Won't be 200 (upstream not running) but MUST NOT be 402

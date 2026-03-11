@@ -5,6 +5,11 @@ export interface AlbyConfig {
   nwcUrl: string
   /** Request timeout in ms (default: 30000) */
   timeout?: number
+  /**
+   * Opt into the current insecure JSON-over-relay transport.
+   * This exists only for local testing and trusted relay experiments.
+   */
+  allowInsecureRelay?: boolean
 }
 
 interface NwcParams {
@@ -42,14 +47,21 @@ function parseNwcUrl(nwcUrl: string): NwcParams {
 /**
  * Lightning backend adapter for Alby / Nostr Wallet Connect (NWC).
  *
- * This is a simplified implementation that sends JSON requests directly
- * to an NWC relay. For production NWC, you'd encrypt messages with
- * NIP-04/NIP-44. This works with NWC proxies that accept JSON directly.
+ * This transport is intentionally disabled by default because it sends
+ * unsigned, unencrypted JSON directly to the relay and therefore cannot
+ * authenticate responses. Pass `allowInsecureRelay: true` only for local
+ * testing or a fully trusted relay shim.
  *
  * The `ws` package is imported dynamically so it only needs to be
  * installed when this backend is actually used.
  */
 export function albyBackend(config: AlbyConfig): LightningBackend {
+  if (!config.allowInsecureRelay) {
+    throw new Error(
+      'albyBackend is disabled by default because its JSON relay transport is unauthenticated; pass allowInsecureRelay: true only for local testing',
+    )
+  }
+
   const params = parseNwcUrl(config.nwcUrl)
   const timeoutMs = config.timeout ?? 30_000
 

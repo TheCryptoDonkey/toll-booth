@@ -105,7 +105,28 @@ describe('Hono adapter', () => {
     const backend = mockBackend()
     const storage = memoryStorage()
     const paymentHash = 'b'.repeat(64)
-    storage.storeInvoice(paymentHash, 'lnbc100n1mock...', 1000, 'mac_token')
+    storage.storeInvoice(paymentHash, 'lnbc100n1mock...', 1000, 'mac_token', 'status-token')
+
+    const app = new Hono()
+    app.get(
+      '/invoice-status/:paymentHash',
+      createHonoInvoiceStatusHandler({ backend, storage }),
+    )
+
+    const res = await app.request(`/invoice-status/${paymentHash}?token=status-token`, {
+      headers: { Accept: 'application/json' },
+    })
+    expect(res.status).toBe(200)
+
+    const body = await res.json()
+    expect(body).toHaveProperty('paid', false)
+  })
+
+  it('returns 404 when invoice status token is missing', async () => {
+    const backend = mockBackend()
+    const storage = memoryStorage()
+    const paymentHash = 'b'.repeat(64)
+    storage.storeInvoice(paymentHash, 'lnbc100n1mock...', 1000, 'mac_token', 'status-token')
 
     const app = new Hono()
     app.get(
@@ -116,10 +137,7 @@ describe('Hono adapter', () => {
     const res = await app.request(`/invoice-status/${paymentHash}`, {
       headers: { Accept: 'application/json' },
     })
-    expect(res.status).toBe(200)
-
-    const body = await res.json()
-    expect(body).toHaveProperty('paid', false)
+    expect(res.status).toBe(404)
   })
 
   it('creates invoice via handler', async () => {

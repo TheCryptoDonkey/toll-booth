@@ -30,6 +30,7 @@ describe('lnbitsBackend', () => {
       expect(opts.method).toBe('POST')
       expect(opts.headers['X-Api-Key']).toBe('test-api-key')
       expect(opts.headers['Content-Type']).toBe('application/json')
+      expect(opts.signal).toBeInstanceOf(AbortSignal)
 
       const body = JSON.parse(opts.body)
       expect(body.out).toBe(false)
@@ -97,6 +98,7 @@ describe('lnbitsBackend', () => {
       const [url, opts] = mockFetch.mock.calls[0]
       expect(url).toBe('https://legend.lnbits.com/api/v1/payments/abc123')
       expect(opts.headers['X-Api-Key']).toBe('test-api-key')
+      expect(opts.signal).toBeInstanceOf(AbortSignal)
       expect(status.paid).toBe(true)
       expect(status.preimage).toBe('def456')
     })

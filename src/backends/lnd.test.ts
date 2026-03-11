@@ -34,6 +34,7 @@ describe('lndBackend', () => {
         headers: expect.objectContaining({
           'Grpc-Metadata-macaroon': 'aabbcc',
         }),
+        signal: expect.any(AbortSignal),
       }),
     )
   })
@@ -53,6 +54,15 @@ describe('lndBackend', () => {
     const backend = lndBackend({ url: 'https://localhost:8080', macaroon: 'aabbcc' })
     const status = await backend.checkInvoice('deadbeef01234567')
 
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://localhost:8080/v1/invoice/deadbeef01234567',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          'Grpc-Metadata-macaroon': 'aabbcc',
+        }),
+        signal: expect.any(AbortSignal),
+      }),
+    )
     expect(status.paid).toBe(true)
     expect(status.preimage).toBe(preimageHex)
   })

@@ -2,11 +2,22 @@
 import type { StorageBackend, DebitResult, StoredInvoice, PendingClaim } from './interface.js'
 
 const DEFAULT_LEASE_MS = 30_000
+type StoredInvoiceRecord = StoredInvoice & { statusToken: string }
+
+function toStoredInvoice(record: StoredInvoiceRecord): StoredInvoice {
+  return {
+    paymentHash: record.paymentHash,
+    bolt11: record.bolt11,
+    amountSats: record.amountSats,
+    macaroon: record.macaroon,
+    createdAt: record.createdAt,
+  }
+}
 
 export function memoryStorage(): StorageBackend {
   const balances = new Map<string, number>()
-  const invoices = new Map<string, StoredInvoice>()
-  const settled = new Set<string>()
+  const invoices = new Map<string, StoredInvoiceRecord>()
+  const settled = new Map<string, string | undefined>()
   const claims = new Map<string, { token: string; claimedAt: string; leaseExpiresAt: number }>()
 
   return {
@@ -31,7 +42,7 @@ export function memoryStorage(): StorageBackend {
 
     settle(paymentHash: string): boolean {
       if (settled.has(paymentHash)) return false
-      settled.add(paymentHash)
+      settled.set(paymentHash, undefined)
       return true
     },
 
@@ -39,13 +50,17 @@ export function memoryStorage(): StorageBackend {
       return settled.has(paymentHash)
     },
 
-    settleWithCredit(paymentHash: string, amount: number): boolean {
+    settleWithCredit(paymentHash: string, amount: number, settlementSecret?: string): boolean {
       if (settled.has(paymentHash)) return false
-      settled.add(paymentHash)
+      settled.set(paymentHash, settlementSecret)
       claims.delete(paymentHash)
       const current = balances.get(paymentHash) ?? 0
       balances.set(paymentHash, current + amount)
       return true
+    },
+
+    getSettlementSecret(paymentHash: string): string | undefined {
+      return settled.get(paymentHash)
     },
 
     claimForRedeem(paymentHash: string, token: string, leaseMs?: number): boolean {
@@ -85,19 +100,27 @@ export function memoryStorage(): StorageBackend {
       return true
     },
 
-    storeInvoice(paymentHash: string, bolt11: string, amountSats: number, macaroon: string): void {
+    storeInvoice(paymentHash: string, bolt11: string, amountSats: number, macaroon: string, statusToken: string): void {
       if (invoices.has(paymentHash)) return
       invoices.set(paymentHash, {
         paymentHash,
         bolt11,
         amountSats,
         macaroon,
+        statusToken,
         createdAt: new Date().toISOString(),
       })
     },
 
     getInvoice(paymentHash: string): StoredInvoice | undefined {
-      return invoices.get(paymentHash)
+      const invoice = invoices.get(paymentHash)
+      return invoice ? toStoredInvoice(invoice) : undefined
+    },
+
+    getInvoiceForStatus(paymentHash: string, statusToken: string): StoredInvoice | undefined {
+      const invoice = invoices.get(paymentHash)
+      if (!invoice || invoice.statusToken !== statusToken) return undefined
+      return toStoredInvoice(invoice)
     },
 
     close(): void {

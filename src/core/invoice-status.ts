@@ -19,8 +19,11 @@ export interface InvoiceStatusDeps {
 export async function handleInvoiceStatus(
   deps: InvoiceStatusDeps,
   paymentHash: string,
+  statusToken?: string,
 ): Promise<InvoiceStatusResult> {
-  const invoice = deps.storage.getInvoice(paymentHash)
+  const invoice = statusToken
+    ? deps.storage.getInvoiceForStatus(paymentHash, statusToken)
+    : undefined
   if (!invoice) {
     return { found: false, paid: false }
   }
@@ -28,7 +31,12 @@ export async function handleInvoiceStatus(
   // In Cashu-only mode (no backend), check settlement status from storage
   if (!deps.backend) {
     const settled = deps.storage.isSettled(paymentHash)
-    return { found: true, paid: settled, invoice }
+    return {
+      found: true,
+      paid: settled,
+      tokenSuffix: settled ? deps.storage.getSettlementSecret(paymentHash) : undefined,
+      invoice,
+    }
   }
 
   const status = await deps.backend.checkInvoice(paymentHash)
@@ -36,6 +44,7 @@ export async function handleInvoiceStatus(
     found: true,
     paid: status.paid,
     preimage: status.preimage,
+    tokenSuffix: status.preimage ?? (status.paid ? deps.storage.getSettlementSecret(paymentHash) : undefined),
     invoice,
   }
 }
@@ -47,9 +56,12 @@ export async function handleInvoiceStatus(
 export async function renderInvoiceStatusHtml(
   deps: InvoiceStatusDeps,
   paymentHash: string,
+  statusToken?: string,
 ): Promise<{ html: string; status: number }> {
   try {
-    const invoice = deps.storage.getInvoice(paymentHash)
+    const invoice = statusToken
+      ? deps.storage.getInvoiceForStatus(paymentHash, statusToken)
+      : undefined
     if (!invoice) {
       return {
         html: renderErrorPage({
@@ -67,6 +79,7 @@ export async function renderInvoiceStatusHtml(
       invoice,
       paid: status.paid,
       preimage: status.preimage,
+      tokenSuffix: status.preimage ?? (status.paid ? deps.storage.getSettlementSecret(paymentHash) : undefined),
       tiers: deps.tiers ?? [],
       nwcEnabled: deps.nwcEnabled ?? false,
       cashuEnabled: deps.cashuEnabled ?? false,
