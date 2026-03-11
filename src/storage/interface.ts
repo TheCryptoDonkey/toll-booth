@@ -56,5 +56,7 @@ export interface StorageBackend {
   getInvoiceForStatus(paymentHash: string, statusToken: string): StoredInvoice | undefined
   /** Delete invoices older than maxAgeMs. Returns the number of deleted rows. */
   pruneExpiredInvoices(maxAgeMs: number): number
+  /** Delete zero-balance credits and aged settlements/claims. Returns total deleted rows. */
+  pruneStaleRecords(maxAgeMs: number): number
   close(): void
 }

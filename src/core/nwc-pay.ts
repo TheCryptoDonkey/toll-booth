@@ -30,7 +30,7 @@ export async function handleNwcPay(
     const preimage = await deps.nwcPay(nwcUri, invoice.bolt11)
     return { success: true, preimage }
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'NWC payment failed'
-    return { success: false, error: message, status: 500 }
+    console.error('[toll-booth] NWC payment error:', err instanceof Error ? err.message : err)
+    return { success: false, error: 'NWC payment failed', status: 500 }
   }
 }

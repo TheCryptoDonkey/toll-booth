@@ -1,5 +1,5 @@
 // src/core/toll-booth.ts
-import { createHash, randomBytes } from 'node:crypto'
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import { mintMacaroon, verifyMacaroon } from '../macaroon.js'
 import { FreeTier } from '../free-tier.js'
 import type { StorageBackend } from '../storage/interface.js'
@@ -196,6 +196,6 @@ function isValidLightningPreimage(preimage: string, paymentHash: string): boolea
   if (!/^[0-9a-f]{64}$/.test(preimage)) return false
   const computedHash = createHash('sha256')
     .update(Buffer.from(preimage, 'hex'))
-    .digest('hex')
-  return computedHash === paymentHash
+    .digest()
+  return timingSafeEqual(computedHash, Buffer.from(paymentHash, 'hex'))
 }

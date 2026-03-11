@@ -159,6 +159,23 @@ export function sqliteStorage(config?: SqliteStorageConfig): StorageBackend {
     WHERE datetime(created_at) <= datetime('now', '-' || ? || ' seconds')
   `)
 
+  const stmtPruneZeroCredits = db.prepare(`
+    DELETE FROM credits
+    WHERE balance <= 0
+      AND datetime(updated_at) <= datetime('now', '-' || ? || ' seconds')
+  `)
+
+  const stmtPruneSettlements = db.prepare(`
+    DELETE FROM settlements
+    WHERE datetime(settled_at) <= datetime('now', '-' || ? || ' seconds')
+  `)
+
+  const stmtPruneClaims = db.prepare(`
+    DELETE FROM claims
+    WHERE payment_hash IN (SELECT payment_hash FROM settlements)
+      OR datetime(claimed_at) <= datetime('now', '-' || ? || ' seconds')
+  `)
+
   const txnClaimForRedeem = db.transaction((paymentHash: string, token: string, leaseExpiresAt: string) => {
     // Reject if already settled
     if (stmtIsSettled.get(paymentHash)) return false
@@ -312,6 +329,15 @@ export function sqliteStorage(config?: SqliteStorageConfig): StorageBackend {
       const maxAgeSecs = Math.floor(maxAgeMs / 1000)
       const result = stmtPruneInvoices.run(maxAgeSecs)
       return result.changes
+    },
+
+    pruneStaleRecords(maxAgeMs: number): number {
+      const maxAgeSecs = Math.floor(maxAgeMs / 1000)
+      let total = 0
+      total += stmtPruneZeroCredits.run(maxAgeSecs).changes
+      total += stmtPruneSettlements.run(maxAgeSecs).changes
+      total += stmtPruneClaims.run(maxAgeSecs).changes
+      return total
     },
 
     close(): void {

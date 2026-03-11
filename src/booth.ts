@@ -174,9 +174,12 @@ export class Booth {
     // Invoice expiry pruning
     const maxAge = config.invoiceMaxAgeMs ?? 86_400_000 // 24 hours
     if (maxAge > 0) {
-      this.pruneTimer = setInterval(() => {
+      const timer = setInterval(() => {
         this.storage.pruneExpiredInvoices(maxAge)
+        this.storage.pruneStaleRecords(maxAge)
       }, 3_600_000) // every hour
+      timer.unref()
+      this.pruneTimer = timer
     }
 
     // Auto-recover any pending Cashu claims from a previous crash

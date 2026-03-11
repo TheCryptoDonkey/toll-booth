@@ -135,6 +135,11 @@ export function memoryStorage(): StorageBackend {
       return pruned
     },
 
+    pruneStaleRecords(_maxAgeMs: number): number {
+      // Memory storage is for testing only — no long-running pruning needed
+      return 0
+    },
+
     close(): void {
       balances.clear()
       invoices.clear()

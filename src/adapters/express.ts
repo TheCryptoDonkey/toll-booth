@@ -81,7 +81,7 @@ export function createExpressMiddleware(
 
       if (result.action === 'pass' || result.action === 'proxy') {
         // Proxy to upstream
-        const target = `${upstreamBase}${req.originalUrl}`
+        const target = new URL(req.originalUrl, upstreamBase).href
         const fwdHeaders = new Headers()
         for (const [key, value] of Object.entries(req.headers)) {
           if (key.toLowerCase() === 'authorization' || key.toLowerCase() === 'host') continue

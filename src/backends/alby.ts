@@ -65,6 +65,7 @@ export function albyBackend(config: AlbyConfig): LightningBackend {
   const params = parseNwcUrl(config.nwcUrl)
   const timeoutMs = config.timeout ?? 30_000
 
+  const MAX_CACHED_INVOICES = 10_000
   const invoiceMap = new Map<string, { bolt11: string; paid: boolean; preimage?: string }>()
 
   return {
@@ -86,6 +87,11 @@ export function albyBackend(config: AlbyConfig): LightningBackend {
         throw new Error('NWC response missing invoice or payment_hash')
       }
 
+      // Evict oldest entries when cache is full (Map preserves insertion order)
+      if (invoiceMap.size >= MAX_CACHED_INVOICES) {
+        const oldest = invoiceMap.keys().next().value!
+        invoiceMap.delete(oldest)
+      }
       invoiceMap.set(paymentHash, { bolt11, paid: false })
       return { bolt11, paymentHash }
     },
