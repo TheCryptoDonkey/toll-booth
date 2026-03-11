@@ -185,7 +185,7 @@ if $RUN_CASHU && [ $TEST_EXIT -eq 0 ]; then
   echo "--- Cashu tests ---"
   RUN_INTEGRATION=true \
   CASHU_MINT_URL=http://127.0.0.1:13338 \
-    npx vitest run src/e2e/cashu-redeem.integration.test.ts
+    npx vitest run src/e2e/cashu-redeem.integration.test.ts src/e2e/cashu-only.integration.test.ts
   CASHU_EXIT=$?
   [ $CASHU_EXIT -ne 0 ] && TEST_EXIT=$CASHU_EXIT
 fi
