@@ -38,7 +38,7 @@ export async function handleCashuRedeem(
       }
     }
 
-    // Try to claim exclusively
+    // Try to claim exclusively before the irreversible external redeem call.
     if (!deps.storage.claimForRedeem(paymentHash, token, REDEEM_LEASE_MS)) {
       // Already settled — idempotent success
       if (deps.storage.isSettled(paymentHash)) {
@@ -49,7 +49,8 @@ export async function handleCashuRedeem(
         }
       }
 
-      // Try to acquire expired lease
+      // Retry an expired lease. This is only correct when the redeem
+      // implementation is idempotent for the same paymentHash.
       const pendingClaim = deps.storage.tryAcquireRecoveryLease(paymentHash, REDEEM_LEASE_MS)
       if (pendingClaim) {
         try {

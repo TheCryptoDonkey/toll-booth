@@ -10,6 +10,12 @@ import type { NwcPayDeps } from '../core/nwc-pay.js'
 import { handleCashuRedeem } from '../core/cashu-redeem.js'
 import type { CashuRedeemDeps } from '../core/cashu-redeem.js'
 import { PAYMENT_HASH_RE } from '../core/types.js'
+import {
+  appendVary,
+  applyNoStoreHeaders,
+  stripProxyRequestHeaders,
+  stripProxyResponseHeaders,
+} from './proxy-headers.js'
 
 // -- Middleware ---------------------------------------------------------------
 
@@ -26,6 +32,34 @@ export interface ExpressMiddlewareConfig {
   responseHeaders?: Record<string, string>
   /** Timeout in milliseconds for upstream proxy requests (default: 30000). */
   upstreamTimeout?: number
+}
+
+function setSensitiveHeaders(res: Response, headers?: Headers): void {
+  const merged = headers ? new Headers(headers) : new Headers()
+  applyNoStoreHeaders(merged)
+  merged.forEach((value, key) => {
+    res.setHeader(key, value)
+  })
+}
+
+function jsonWithSensitiveHeaders(
+  res: Response,
+  body: unknown,
+  status = 200,
+  headers?: Headers,
+): void {
+  setSensitiveHeaders(res, headers)
+  res.status(status).json(body)
+}
+
+function htmlWithSensitiveHeaders(
+  res: Response,
+  html: string,
+  status = 200,
+  headers?: Headers,
+): void {
+  setSensitiveHeaders(res, headers)
+  res.status(status).type('html').send(html)
 }
 
 export function createExpressMiddleware(
@@ -82,12 +116,12 @@ export function createExpressMiddleware(
       if (result.action === 'pass' || result.action === 'proxy') {
         // Proxy to upstream
         const target = new URL(req.originalUrl, upstreamBase).href
-        const fwdHeaders = new Headers()
+        const incomingHeaders = new Headers()
         for (const [key, value] of Object.entries(req.headers)) {
-          if (key.toLowerCase() === 'authorization' || key.toLowerCase() === 'host') continue
           const v = Array.isArray(value) ? value.join(', ') : value
-          if (v) fwdHeaders.set(key, v)
+          if (v) incomingHeaders.set(key, v)
         }
+        const fwdHeaders = stripProxyRequestHeaders(incomingHeaders)
 
         const init: RequestInit & { duplex?: string } = {
           method: req.method,
@@ -108,9 +142,8 @@ export function createExpressMiddleware(
         }
 
         const upstream_res = await fetch(target, init as RequestInit)
-        // Copy response headers, skipping hop-by-hop headers we handle ourselves
-        upstream_res.headers.forEach((value, key) => {
-          if (key === 'transfer-encoding') return  // we buffer the body, Express sets content-length
+        const responseHeaders = stripProxyResponseHeaders(upstream_res.headers)
+        responseHeaders.forEach((value, key) => {
           res.setHeader(key, value)
         })
         // Set extra headers from engine result
@@ -126,13 +159,14 @@ export function createExpressMiddleware(
       }
 
       // challenge -- 402
+      const challengeHeaders = new Headers()
       for (const [key, value] of Object.entries(result.headers)) {
-        res.setHeader(key, value)
+        challengeHeaders.set(key, value)
       }
       for (const [key, value] of Object.entries(extraHeaders)) {
-        res.setHeader(key, value)
+        challengeHeaders.set(key, value)
       }
-      res.status(402).json(result.body)
+      jsonWithSensitiveHeaders(res, result.body, 402, challengeHeaders)
     } catch {
       res.status(502).json({ error: 'Upstream routing engine unavailable' })
     }
@@ -165,18 +199,33 @@ export function createExpressInvoiceStatusHandler(
     try {
       if (accept.includes('text/html')) {
         const { html, status } = await renderInvoiceStatusHtml(deps, paymentHash, statusToken)
-        res.status(status).type('html').send(html)
+        htmlWithSensitiveHeaders(res, html, status, appendVary(new Headers(), 'Accept'))
         return
       }
 
       const result = await handleInvoiceStatus(deps, paymentHash, statusToken)
       if (!result.found) {
-        res.status(404).json({ error: 'Invoice not found' })
+        jsonWithSensitiveHeaders(
+          res,
+          { error: 'Invoice not found' },
+          404,
+          appendVary(new Headers(), 'Accept'),
+        )
         return
       }
-      res.json({ paid: result.paid, preimage: result.preimage, token_suffix: result.tokenSuffix })
+      jsonWithSensitiveHeaders(
+        res,
+        { paid: result.paid, preimage: result.preimage, token_suffix: result.tokenSuffix },
+        200,
+        appendVary(new Headers(), 'Accept'),
+      )
     } catch {
-      res.status(502).json({ error: 'Failed to check invoice status' })
+      jsonWithSensitiveHeaders(
+        res,
+        { error: 'Failed to check invoice status' },
+        502,
+        appendVary(new Headers(), 'Accept'),
+      )
     }
   }
 }
@@ -197,12 +246,12 @@ export function createExpressCreateInvoiceHandler(
     const result = await handleCreateInvoice(deps, body)
 
     if (!result.success) {
-      res.status(400).json({ error: result.error, tiers: result.tiers })
+      jsonWithSensitiveHeaders(res, { error: result.error, tiers: result.tiers }, 400)
       return
     }
 
     const d = result.data!
-    res.json({
+    jsonWithSensitiveHeaders(res, {
       bolt11: d.bolt11,
       payment_hash: d.paymentHash,
       payment_url: d.paymentUrl,
@@ -227,9 +276,9 @@ export function createExpressNwcHandler(deps: NwcPayDeps): RequestHandler {
     const body = req.body ?? {}
     const result = await handleNwcPay(deps, body)
     if (result.success) {
-      res.json({ preimage: result.preimage })
+      jsonWithSensitiveHeaders(res, { preimage: result.preimage })
     } else {
-      res.status(result.status).json({ error: result.error })
+      jsonWithSensitiveHeaders(res, { error: result.error }, result.status)
     }
   }
 }
@@ -240,18 +289,18 @@ export function createExpressNwcHandler(deps: NwcPayDeps): RequestHandler {
  * Returns an Express `RequestHandler` that redeems a Cashu token as payment.
  *
  * Expects JSON body with `{ token, paymentHash, statusToken }`.
- * Uses durable write-ahead claims for crash-safe redemption.
+ * Uses durable claims and leases to avoid concurrent duplicate redemption.
  */
 export function createExpressCashuHandler(deps: CashuRedeemDeps): RequestHandler {
   return async (req: Request, res: Response, _next: NextFunction) => {
     const body = req.body ?? {}
     const result = await handleCashuRedeem(deps, body)
     if (result.success) {
-      res.json({ credited: result.credited, token_suffix: result.tokenSuffix })
+      jsonWithSensitiveHeaders(res, { credited: result.credited, token_suffix: result.tokenSuffix })
     } else if ('state' in result) {
-      res.status(202).json({ state: result.state, retryAfterMs: result.retryAfterMs })
+      jsonWithSensitiveHeaders(res, { state: result.state, retryAfterMs: result.retryAfterMs }, 202)
     } else {
-      res.status(result.status).json({ error: result.error })
+      jsonWithSensitiveHeaders(res, { error: result.error }, result.status)
     }
   }
 }

@@ -10,10 +10,19 @@ import type { NwcPayDeps } from '../core/nwc-pay.js'
 import { handleCashuRedeem } from '../core/cashu-redeem.js'
 import type { CashuRedeemDeps } from '../core/cashu-redeem.js'
 import { PAYMENT_HASH_RE } from '../core/types.js'
+import {
+  appendVary,
+  applyNoStoreHeaders,
+  stripProxyRequestHeaders,
+  stripProxyResponseHeaders,
+} from './proxy-headers.js'
 
 export type WebStandardHandler = (req: Request) => Promise<Response>
 
 // -- Helpers ------------------------------------------------------------------
+
+class BodyTooLargeError extends Error {}
+type ParsedJson<T> = { ok: true; value: T } | { ok: false }
 
 /**
  * Parses the request body as JSON with a configurable size limit.
@@ -26,30 +35,27 @@ export type WebStandardHandler = (req: Request) => Promise<Response>
  * @param req      - The incoming request.
  * @param maxBytes - Maximum allowed body size in bytes (default: 64 KiB).
  */
-async function safeParseJson<T = Record<string, unknown>>(req: Request, maxBytes = 65_536): Promise<T> {
+async function safeParseJson<T = Record<string, unknown>>(req: Request, maxBytes = 65_536): Promise<ParsedJson<T>> {
   // Quick rejection via Content-Length header — avoids reading the body at all
   const contentLength = req.headers.get('content-length')
-  if (contentLength !== null && parseInt(contentLength, 10) > maxBytes) {
-    return {} as T
+  const parsedLength = contentLength === null ? NaN : parseInt(contentLength, 10)
+  if (Number.isFinite(parsedLength) && parsedLength > maxBytes) {
+    return { ok: false }
   }
 
   try {
-    const text = await req.text()
-    if (text.length > maxBytes) {
-      return {} as T
-    }
-    return JSON.parse(text) as T
+    const text = await readBodyTextWithinLimit(req, maxBytes)
+    if (!text.trim()) return { ok: true, value: {} as T }
+    return { ok: true, value: JSON.parse(text) as T }
   } catch {
-    return {} as T
+    return { ok: false }
   }
 }
 
 async function proxyUpstream(upstream: string, req: Request, timeoutMs = 30_000): Promise<Response> {
   const url = new URL(req.url)
   const target = `${upstream}${url.pathname}${url.search}`
-  const headers = new Headers(req.headers)
-  headers.delete('Authorization')
-  headers.delete('Host')
+  const headers = stripProxyRequestHeaders(req.headers)
 
   const init: RequestInit & { duplex?: string } = {
     method: req.method,
@@ -64,6 +70,34 @@ async function proxyUpstream(upstream: string, req: Request, timeoutMs = 30_000)
   }
 
   return fetch(target, init as RequestInit)
+}
+
+async function readBodyTextWithinLimit(req: Request, maxBytes: number): Promise<string> {
+  if (!req.body) return ''
+
+  const reader = req.body.getReader()
+  const decoder = new TextDecoder()
+  let totalBytes = 0
+  let text = ''
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      totalBytes += value.byteLength
+      if (totalBytes > maxBytes) {
+        await reader.cancel()
+        throw new BodyTooLargeError('Request body exceeded limit')
+      }
+
+      text += decoder.decode(value, { stream: true })
+    }
+
+    return text + decoder.decode()
+  } finally {
+    reader.releaseLock()
+  }
 }
 
 // -- Middleware ----------------------------------------------------------------
@@ -130,23 +164,34 @@ export function createWebStandardMiddleware(
     })
 
     if (result.action === 'pass' || result.action === 'proxy') {
-      const res = await proxyUpstream(upstreamBase, req, upstreamTimeout)
-      const responseHeaders = new Headers(res.headers)
-      for (const [key, value] of Object.entries(result.headers)) {
-        responseHeaders.set(key, value)
+      try {
+        const res = await proxyUpstream(upstreamBase, req, upstreamTimeout)
+        const responseHeaders = stripProxyResponseHeaders(res.headers)
+        for (const [key, value] of Object.entries(result.headers)) {
+          responseHeaders.set(key, value)
+        }
+        for (const [key, value] of Object.entries(extraHeaders)) {
+          responseHeaders.set(key, value)
+        }
+        return new Response(res.body, {
+          status: res.status,
+          statusText: res.statusText,
+          headers: responseHeaders,
+        })
+      } catch {
+        return Response.json(
+          { error: 'Upstream unavailable' },
+          { status: 502, headers: new Headers(extraHeaders) },
+        )
       }
-      for (const [key, value] of Object.entries(extraHeaders)) {
-        responseHeaders.set(key, value)
-      }
-      return new Response(res.body, {
-        status: res.status,
-        statusText: res.statusText,
-        headers: responseHeaders,
-      })
     }
 
     // challenge — 402
-    const challengeHeaders = { ...result.headers, ...extraHeaders }
+    const challengeHeaders = new Headers(extraHeaders)
+    for (const [key, value] of Object.entries(result.headers)) {
+      challengeHeaders.set(key, value)
+    }
+    applyNoStoreHeaders(challengeHeaders)
     return Response.json(result.body, {
       status: 402,
       headers: challengeHeaders,
@@ -180,19 +225,30 @@ export function createWebStandardInvoiceStatusHandler(
     try {
       if (accept.includes('text/html')) {
         const { html, status } = await renderInvoiceStatusHtml(deps, paymentHash, statusToken)
+        const headers = appendVary(applyNoStoreHeaders(new Headers()), 'Accept')
+        headers.set('Content-Type', 'text/html; charset=utf-8')
         return new Response(html, {
           status,
-          headers: { 'Content-Type': 'text/html; charset=utf-8' },
+          headers,
         })
       }
 
       const result = await handleInvoiceStatus(deps, paymentHash, statusToken)
       if (!result.found) {
-        return Response.json({ error: 'Invoice not found' }, { status: 404 })
+        return Response.json(
+          { error: 'Invoice not found' },
+          { status: 404, headers: appendVary(applyNoStoreHeaders(new Headers()), 'Accept') },
+        )
       }
-      return Response.json({ paid: result.paid, preimage: result.preimage, token_suffix: result.tokenSuffix })
+      return Response.json(
+        { paid: result.paid, preimage: result.preimage, token_suffix: result.tokenSuffix },
+        { headers: appendVary(applyNoStoreHeaders(new Headers()), 'Accept') },
+      )
     } catch {
-      return Response.json({ error: 'Failed to check invoice status' }, { status: 502 })
+      return Response.json(
+        { error: 'Failed to check invoice status' },
+        { status: 502, headers: appendVary(applyNoStoreHeaders(new Headers()), 'Accept') },
+      )
     }
   }
 }
@@ -209,23 +265,36 @@ export function createWebStandardCreateInvoiceHandler(
   deps: CreateInvoiceDeps,
 ): WebStandardHandler {
   return async (req: Request): Promise<Response> => {
-    const body = await safeParseJson<CreateInvoiceRequest>(req)
-    const result = await handleCreateInvoice(deps, body)
+    const parsed = await safeParseJson<CreateInvoiceRequest>(req)
+    if (!parsed.ok) {
+      return Response.json(
+        { error: 'Invalid JSON body' },
+        { status: 400, headers: applyNoStoreHeaders(new Headers()) },
+      )
+    }
+
+    const result = await handleCreateInvoice(deps, parsed.value)
 
     if (!result.success) {
-      return Response.json({ error: result.error, tiers: result.tiers }, { status: 400 })
+      return Response.json(
+        { error: result.error, tiers: result.tiers },
+        { status: 400, headers: applyNoStoreHeaders(new Headers()) },
+      )
     }
 
     const d = result.data!
-    return Response.json({
-      bolt11: d.bolt11,
-      payment_hash: d.paymentHash,
-      payment_url: d.paymentUrl,
-      amount_sats: d.amountSats,
-      credit_sats: d.creditSats,
-      macaroon: d.macaroon,
-      qr_svg: d.qrSvg,
-    })
+    return Response.json(
+      {
+        bolt11: d.bolt11,
+        payment_hash: d.paymentHash,
+        payment_url: d.paymentUrl,
+        amount_sats: d.amountSats,
+        credit_sats: d.creditSats,
+        macaroon: d.macaroon,
+        qr_svg: d.qrSvg,
+      },
+      { headers: applyNoStoreHeaders(new Headers()) },
+    )
   }
 }
 
@@ -239,12 +308,22 @@ export function createWebStandardCreateInvoiceHandler(
  */
 export function createWebStandardNwcHandler(deps: NwcPayDeps): WebStandardHandler {
   return async (req: Request): Promise<Response> => {
-    const body = await safeParseJson<NwcPayRequest>(req)
-    const result = await handleNwcPay(deps, body)
-    if (result.success) {
-      return Response.json({ preimage: result.preimage })
+    const parsed = await safeParseJson<NwcPayRequest>(req)
+    if (!parsed.ok) {
+      return Response.json(
+        { error: 'Invalid JSON body' },
+        { status: 400, headers: applyNoStoreHeaders(new Headers()) },
+      )
     }
-    return Response.json({ error: result.error }, { status: result.status })
+
+    const result = await handleNwcPay(deps, parsed.value)
+    if (result.success) {
+      return Response.json({ preimage: result.preimage }, { headers: applyNoStoreHeaders(new Headers()) })
+    }
+    return Response.json(
+      { error: result.error },
+      { status: result.status, headers: applyNoStoreHeaders(new Headers()) },
+    )
   }
 }
 
@@ -254,18 +333,34 @@ export function createWebStandardNwcHandler(deps: NwcPayDeps): WebStandardHandle
  * Returns a `WebStandardHandler` that redeems a Cashu token as payment.
  *
  * Expects JSON body with `{ token, paymentHash, statusToken }`.
- * Uses durable write-ahead claims for crash-safe redemption.
+ * Uses durable claims and leases to avoid concurrent duplicate redemption.
  */
 export function createWebStandardCashuHandler(deps: CashuRedeemDeps): WebStandardHandler {
   return async (req: Request): Promise<Response> => {
-    const body = await safeParseJson<CashuRedeemRequest>(req)
-    const result = await handleCashuRedeem(deps, body)
+    const parsed = await safeParseJson<CashuRedeemRequest>(req)
+    if (!parsed.ok) {
+      return Response.json(
+        { error: 'Invalid JSON body' },
+        { status: 400, headers: applyNoStoreHeaders(new Headers()) },
+      )
+    }
+
+    const result = await handleCashuRedeem(deps, parsed.value)
     if (result.success) {
-      return Response.json({ credited: result.credited, token_suffix: result.tokenSuffix })
+      return Response.json(
+        { credited: result.credited, token_suffix: result.tokenSuffix },
+        { headers: applyNoStoreHeaders(new Headers()) },
+      )
     }
     if ('state' in result) {
-      return Response.json({ state: result.state, retryAfterMs: result.retryAfterMs }, { status: 202 })
+      return Response.json(
+        { state: result.state, retryAfterMs: result.retryAfterMs },
+        { status: 202, headers: applyNoStoreHeaders(new Headers()) },
+      )
     }
-    return Response.json({ error: result.error }, { status: result.status })
+    return Response.json(
+      { error: result.error },
+      { status: result.status, headers: applyNoStoreHeaders(new Headers()) },
+    )
   }
 }

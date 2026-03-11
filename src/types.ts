@@ -158,7 +158,8 @@ export interface BoothConfig {
 
   /**
    * Redeem a Cashu token as payment.
-   * Returns the credited amount in satoshis.
+   * Returns the credited amount in satoshis. Implementations should be
+   * idempotent for the same `paymentHash` if you rely on retry/recovery.
    * When provided, the payment page shows a Cashu option.
    */
   redeemCashu?: (token: string, paymentHash: string) => Promise<number>

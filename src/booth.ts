@@ -199,7 +199,8 @@ export class Booth {
   /**
    * Recover Cashu redemptions that were claimed but never settled (crash recovery).
    * Automatically called on startup when Cashu is enabled. Can also be called
-   * manually. For each pending claim, retries the redeem call:
+   * manually. This requires an idempotent `redeemCashu` implementation keyed by
+   * `paymentHash`. For each pending claim, retries the redeem call:
    * - If recovery lease is acquired: attempts redeem
    * - On success: settles with the credited amount
    * - On failure: leaves the claim pending for the next recovery attempt

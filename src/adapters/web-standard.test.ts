@@ -96,6 +96,7 @@ describe('Web Standard adapter', () => {
     const res = await handler(new Request('http://localhost/api/route', { method: 'POST' }))
 
     expect(res.status).toBe(402)
+    expect(res.headers.get('cache-control')).toBe('no-store')
 
     const body = await res.json()
     expect(body).toHaveProperty('invoice')
@@ -125,6 +126,7 @@ describe('Web Standard adapter', () => {
     )
 
     expect(res.status).toBe(200)
+    expect(res.headers.get('cache-control')).toBe('no-store')
 
     const body = await res.json()
     expect(body).toHaveProperty('bolt11')
@@ -153,6 +155,58 @@ describe('Web Standard adapter', () => {
       }),
     )
     expect(ok.status).toBe(200)
+    expect(ok.headers.get('cache-control')).toBe('no-store')
+    expect(ok.headers.get('vary')).toBe('Accept')
     expect(await ok.json()).toEqual({ paid: false })
+  })
+
+  it('returns 502 instead of throwing when upstream fetch fails', async () => {
+    const backend = mockBackend()
+    const storage = memoryStorage()
+    const engine = createTollBooth({
+      backend,
+      storage,
+      pricing: {},
+      upstream: 'http://localhost:8002',
+      rootKey: ROOT_KEY,
+    })
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('boom'))
+
+    try {
+      const handler = createWebStandardMiddleware(engine, 'http://localhost:8002')
+      const res = await handler(new Request('http://localhost/api/route', { method: 'POST' }))
+      expect(res.status).toBe(502)
+      expect(await res.json()).toEqual({ error: 'Upstream unavailable' })
+    } finally {
+      fetchSpy.mockRestore()
+    }
+  })
+
+  it('rejects oversized JSON bodies without reading them into memory', async () => {
+    const backend = mockBackend()
+    const storage = memoryStorage()
+
+    const handler = createWebStandardCreateInvoiceHandler({
+      backend,
+      storage,
+      rootKey: ROOT_KEY,
+      tiers: [],
+      defaultAmount: 1000,
+    })
+
+    const oversizedBody = 'x'.repeat(70_000)
+    const res = await handler(
+      new Request('http://localhost/create-invoice', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': String(oversizedBody.length),
+        },
+        body: oversizedBody,
+      }),
+    )
+
+    expect(res.status).toBe(400)
   })
 })

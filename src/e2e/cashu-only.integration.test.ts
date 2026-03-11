@@ -118,9 +118,9 @@ describe.skipIf(!RUN_INTEGRATION)('Cashu-only mode integration (requires Nutshel
     })
 
     expect(redeemRes.status).toBe(200)
-    const redeemBody = await redeemRes.json() as { credited: number; macaroon: string; token_suffix: string }
+    const redeemBody = await redeemRes.json() as { credited: number; token_suffix: string; macaroon?: string }
     expect(redeemBody.credited).toBe(challenge.amount_sats)
-    expect(redeemBody.macaroon).toBeTruthy()
+    expect(redeemBody.macaroon).toBeUndefined()
     expect(redeemBody.token_suffix).toBeTruthy()
 
     // 4. Use macaroon to access gated endpoint

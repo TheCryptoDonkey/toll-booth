@@ -54,6 +54,7 @@ describe('Express adapter', () => {
 
     const res = await request(app, '/route', { method: 'POST' })
     expect(res.status).toBe(402)
+    expect(res.headers.get('cache-control')).toBe('no-store')
 
     const body = await res.json()
     expect(body).toHaveProperty('invoice')
@@ -85,6 +86,7 @@ describe('Express adapter', () => {
       body: JSON.stringify({}),
     })
     expect(res.status).toBe(200)
+    expect(res.headers.get('cache-control')).toBe('no-store')
 
     const body = await res.json()
     expect(body).toHaveProperty('bolt11')
@@ -113,6 +115,8 @@ describe('Express adapter', () => {
       headers: { Accept: 'application/json' },
     })
     expect(ok.status).toBe(200)
+    expect(ok.headers.get('cache-control')).toBe('no-store')
+    expect(ok.headers.get('vary')).toBe('Accept')
     expect(await ok.json()).toEqual({ paid: false })
   })
 
