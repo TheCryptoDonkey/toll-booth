@@ -1,0 +1,54 @@
+# Local integration test stack: bitcoind (regtest) + 2 LND nodes + Cashu mint
+# Usage: scripts/test-integration.sh (not docker compose up directly)
+
+services:
+  bitcoind:
+    image: btcpayserver/bitcoin:27.0
+    restart: "no"
+    ports:
+      - "127.0.0.1:18443:18443"
+    command:
+      - bitcoind
+      - -regtest
+      - -rpcuser=test
+      - -rpcpassword=test
+      - -rpcbind=0.0.0.0
+      - -rpcallowip=0.0.0.0/0
+      - -rpcport=18443
+      - -zmqpubrawblock=tcp://0.0.0.0:28332
+      - -zmqpubrawtx=tcp://0.0.0.0:28333
+      - -fallbackfee=0.00001
+      - -server
+      - -txindex
+
+  lnd-alice:
+    image: lightninglabs/lnd:v0.18.5-beta
+    restart: "no"
+    ports:
+      - "127.0.0.1:18080:8080"
+    volumes:
+      - ./scripts/lnd/lnd-alice.conf:/root/.lnd/lnd.conf:ro
+    depends_on:
+      - bitcoind
+
+  lnd-bob:
+    image: lightninglabs/lnd:v0.18.5-beta
+    restart: "no"
+    ports:
+      - "127.0.0.1:18081:8080"
+    volumes:
+      - ./scripts/lnd/lnd-bob.conf:/root/.lnd/lnd.conf:ro
+    depends_on:
+      - bitcoind
+
+  nutshell:
+    image: cashubtc/nutshell:0.16.3
+    restart: "no"
+    ports:
+      - "127.0.0.1:13338:3338"
+    environment:
+      MINT_BACKEND_BOLT11_SAT: FakeWallet
+      MINT_LISTEN_HOST: 0.0.0.0
+      MINT_LISTEN_PORT: 3338
+      MINT_PRIVATE_KEY: "0000000000000000000000000000000000000000000000000000000000000001"
+    command: poetry run mint
