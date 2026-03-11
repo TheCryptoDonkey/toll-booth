@@ -158,7 +158,9 @@ function handleL402Auth(
     // - Cashu path: suffix matches the settlement secret stored at redemption time
     const settlementSecret = storage.getSettlementSecret(result.paymentHash)
     const hasValidLightningPreimage = isValidLightningPreimage(preimage, result.paymentHash)
-    const hasValidSettlementSecret = settlementSecret !== undefined && preimage === settlementSecret
+    const hasValidSettlementSecret = settlementSecret !== undefined
+      && preimage.length === settlementSecret.length
+      && timingSafeEqual(Buffer.from(preimage), Buffer.from(settlementSecret))
 
     if (!hasValidLightningPreimage && !hasValidSettlementSecret) {
       return { authorised: false, remaining: 0 }

@@ -62,6 +62,21 @@ function htmlWithSensitiveHeaders(
   res.status(status).type('html').send(html)
 }
 
+function buildUpstreamTarget(upstreamBase: string, originalUrl: string): string {
+  const incoming = new URL(originalUrl, 'http://localhost')
+  const upstream = new URL(upstreamBase)
+  const upstreamPath = upstream.pathname.endsWith('/')
+    ? upstream.pathname.slice(0, -1)
+    : upstream.pathname
+  const incomingPath = incoming.pathname.startsWith('/')
+    ? incoming.pathname
+    : `/${incoming.pathname}`
+
+  upstream.pathname = `${upstreamPath}${incomingPath}` || '/'
+  upstream.search = incoming.search
+  return upstream.href
+}
+
 export function createExpressMiddleware(
   engineOrConfig: TollBoothEngine | ExpressMiddlewareConfig,
   upstreamArg?: string,
@@ -115,7 +130,7 @@ export function createExpressMiddleware(
 
       if (result.action === 'pass' || result.action === 'proxy') {
         // Proxy to upstream
-        const target = new URL(req.originalUrl, upstreamBase).href
+        const target = buildUpstreamTarget(upstreamBase, req.originalUrl)
         const incomingHeaders = new Headers()
         for (const [key, value] of Object.entries(req.headers)) {
           const v = Array.isArray(value) ? value.join(', ') : value

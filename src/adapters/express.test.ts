@@ -37,6 +37,31 @@ async function request(app: express.Express, path: string, options: RequestInit 
   })
 }
 
+async function requestRaw(app: express.Express, requestText: string): Promise<string> {
+  const { createServer } = await import('node:http')
+  const { once } = await import('node:events')
+  const { default: net } = await import('node:net')
+
+  const server = createServer(app)
+  server.listen(0, '127.0.0.1')
+  await once(server, 'listening')
+
+  try {
+    const { port } = server.address() as { port: number }
+    const socket = net.connect(port, '127.0.0.1')
+    let response = ''
+
+    socket.write(requestText)
+    socket.on('data', (chunk: Buffer) => {
+      response += chunk.toString('utf8')
+    })
+    await once(socket, 'end')
+    return response
+  } finally {
+    server.close()
+  }
+}
+
 describe('Express adapter', () => {
   it('returns 402 for priced routes without auth', async () => {
     const backend = mockBackend()
@@ -162,6 +187,39 @@ describe('Express adapter', () => {
       expect(body).toEqual(payload)
     } finally {
       upstream.close()
+    }
+  })
+
+  it('does not allow absolute-form request targets to override the configured upstream host', async () => {
+    const backend = mockBackend()
+    const storage = memoryStorage()
+    const engine = createTollBooth({
+      backend,
+      storage,
+      pricing: {},
+      upstream: 'http://127.0.0.1:8002',
+      rootKey: ROOT_KEY,
+    })
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response('ok', { status: 200 }),
+    )
+
+    const app = express()
+    app.use(createExpressMiddleware(engine, 'http://127.0.0.1:8002'))
+
+    try {
+      await requestRaw(
+        app,
+        'GET http://evil.test/pwn?x=1 HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n',
+      )
+
+      expect(fetchSpy).toHaveBeenCalledWith(
+        'http://127.0.0.1:8002/pwn?x=1',
+        expect.any(Object),
+      )
+    } finally {
+      fetchSpy.mockRestore()
     }
   })
 })
