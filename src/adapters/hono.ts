@@ -220,19 +220,41 @@ export function createHonoCashuHandler(
       // Durable claim — written to DB before the irreversible mint call.
       // Only one process/instance wins the claim (atomic INSERT).
       if (!storage.claimForRedeem(paymentHash, token)) {
-        // Already claimed by another request/instance, or already settled
+        // Already settled — idempotent success
+        if (storage.isSettled(paymentHash)) {
+          const invoice = storage.getInvoice(paymentHash)
+          return c.json({ credited: 0, macaroon: invoice?.macaroon })
+        }
+
+        // Pending claim exists but not yet settled — attempt request-triggered recovery
+        const pendingClaim = storage.getPendingClaim(paymentHash)
+        if (pendingClaim) {
+          try {
+            const credited = await redeem(pendingClaim.token, paymentHash)
+            const newlySettled = storage.settleWithCredit(paymentHash, credited)
+            const invoice = storage.getInvoice(paymentHash)
+            return c.json({ credited: newlySettled ? credited : 0, macaroon: invoice?.macaroon })
+          } catch {
+            // Recovery also failed — tell the client to retry later
+            return c.json({ state: 'pending', retryAfterMs: 2000 }, 202)
+          }
+        }
+
+        // Shouldn't reach here, but defensive fallback
         const invoice = storage.getInvoice(paymentHash)
         return c.json({ credited: 0, macaroon: invoice?.macaroon })
       }
 
       // We hold the exclusive claim — call the external mint
-      const credited = await redeem(token, paymentHash)
-
-      // Atomic settle+credit — upgrades claim to settled
-      storage.settleWithCredit(paymentHash, credited)
-
-      const invoice = storage.getInvoice(paymentHash)
-      return c.json({ credited, macaroon: invoice?.macaroon })
+      try {
+        const credited = await redeem(token, paymentHash)
+        const newlySettled = storage.settleWithCredit(paymentHash, credited)
+        const invoice = storage.getInvoice(paymentHash)
+        return c.json({ credited: newlySettled ? credited : 0, macaroon: invoice?.macaroon })
+      } catch {
+        // Mint call failed — claim stays pending for recovery (restart or next request)
+        return c.json({ state: 'pending', retryAfterMs: 2000 }, 202)
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Cashu redemption failed'
       return c.json({ error: message }, 500)

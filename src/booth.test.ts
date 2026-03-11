@@ -283,10 +283,8 @@ describe('Booth', () => {
 
       const [b1, b2] = await Promise.all([r1.json(), r2.json()])
 
-      // Only one call to the external Cashu mint (the claim winner)
-      expect(redeemCashu).toHaveBeenCalledTimes(1)
-
-      // One gets credited: 500, the other gets credited: 0
+      // Both requests may call redeem (claim winner + request-triggered recovery),
+      // but settleWithCredit is atomic — only one credits the balance.
       const credits = [b1.credited, b2.credited].sort()
       expect(credits).toEqual([0, 500])
 
@@ -421,6 +419,87 @@ describe('Booth', () => {
       expect(body.error).toContain('Unknown payment hash')
       // Must never call the external mint
       expect(redeemCashu).not.toHaveBeenCalled()
+
+      booth.close()
+    })
+
+    it('returns 202 pending when initial redeem fails (transient error)', async () => {
+      const redeemCashu = vi.fn().mockRejectedValue(new Error('ECONNREFUSED'))
+      const { app, booth, paymentHash } = setup({ redeemCashu })
+
+      // Store the invoice
+      await app.request('/route', { method: 'POST' })
+
+      const res = await app.request('/cashu-redeem', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: 'cashuA...', paymentHash }),
+      })
+
+      expect(res.status).toBe(202)
+      const body = await res.json()
+      expect(body.state).toBe('pending')
+      expect(body.retryAfterMs).toBe(2000)
+
+      booth.close()
+    })
+
+    it('client retry recovers a pending claim without restart', async () => {
+      const redeemCashu = vi.fn()
+        .mockRejectedValueOnce(new Error('ECONNREFUSED'))
+        .mockResolvedValueOnce(500)
+      const { app, booth, paymentHash } = setup({ redeemCashu })
+
+      // Store the invoice
+      await app.request('/route', { method: 'POST' })
+
+      // First attempt — mint fails, claim is pending
+      const res1 = await app.request('/cashu-redeem', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: 'cashuA...', paymentHash }),
+      })
+      expect(res1.status).toBe(202)
+
+      // Second attempt — mint succeeds via request-triggered recovery
+      const res2 = await app.request('/cashu-redeem', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: 'cashuA...', paymentHash }),
+      })
+      expect(res2.status).toBe(200)
+      const body2 = await res2.json()
+      expect(body2.credited).toBe(500)
+      expect(body2.macaroon).toBeTruthy()
+      expect(redeemCashu).toHaveBeenCalledTimes(2)
+
+      booth.close()
+    })
+
+    it('returns 202 on retry when recovery also fails', async () => {
+      const redeemCashu = vi.fn().mockRejectedValue(new Error('ECONNREFUSED'))
+      const { app, booth, paymentHash } = setup({ redeemCashu })
+
+      // Store the invoice
+      await app.request('/route', { method: 'POST' })
+
+      // First attempt — fails
+      const res1 = await app.request('/cashu-redeem', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: 'cashuA...', paymentHash }),
+      })
+      expect(res1.status).toBe(202)
+
+      // Second attempt — also fails, still 202
+      const res2 = await app.request('/cashu-redeem', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: 'cashuA...', paymentHash }),
+      })
+      expect(res2.status).toBe(202)
+      const body2 = await res2.json()
+      expect(body2.state).toBe('pending')
 
       booth.close()
     })

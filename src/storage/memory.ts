@@ -58,6 +58,13 @@ export function memoryStorage(): StorageBackend {
       }))
     },
 
+    getPendingClaim(paymentHash: string): PendingClaim | undefined {
+      if (settled.has(paymentHash)) return undefined
+      const claim = claims.get(paymentHash)
+      if (!claim) return undefined
+      return { paymentHash, token: claim.token, claimedAt: claim.claimedAt }
+    },
+
     storeInvoice(paymentHash: string, bolt11: string, amountSats: number, macaroon: string): void {
       if (invoices.has(paymentHash)) return
       invoices.set(paymentHash, {

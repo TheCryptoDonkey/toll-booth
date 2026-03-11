@@ -93,6 +93,13 @@ export function sqliteStorage(config?: SqliteStorageConfig): StorageBackend {
     'DELETE FROM claims WHERE payment_hash = ?'
   )
 
+  const stmtGetPendingClaim = db.prepare(`
+    SELECT c.payment_hash, c.token, c.claimed_at
+    FROM claims c
+    LEFT JOIN settlements s ON c.payment_hash = s.payment_hash
+    WHERE c.payment_hash = ? AND s.payment_hash IS NULL
+  `)
+
   const txnClaimForRedeem = db.transaction((paymentHash: string, token: string) => {
     // Reject if already settled
     if (stmtIsSettled.get(paymentHash)) return false
@@ -166,6 +173,20 @@ export function sqliteStorage(config?: SqliteStorageConfig): StorageBackend {
         token: r.token,
         claimedAt: r.claimed_at,
       }))
+    },
+
+    getPendingClaim(paymentHash: string): PendingClaim | undefined {
+      const row = stmtGetPendingClaim.get(paymentHash) as {
+        payment_hash: string
+        token: string
+        claimed_at: string
+      } | undefined
+      if (!row) return undefined
+      return {
+        paymentHash: row.payment_hash,
+        token: row.token,
+        claimedAt: row.claimed_at,
+      }
     },
 
     storeInvoice(paymentHash: string, bolt11: string, amountSats: number, macaroon: string): void {

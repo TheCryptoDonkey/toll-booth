@@ -37,6 +37,8 @@ export interface StorageBackend {
   claimForRedeem(paymentHash: string, token: string): boolean
   /** Returns all claims that were never settled (for crash recovery on startup). */
   pendingClaims(): PendingClaim[]
+  /** Returns a single pending (unsettled) claim by payment hash, or undefined if none exists. */
+  getPendingClaim(paymentHash: string): PendingClaim | undefined
   storeInvoice(paymentHash: string, bolt11: string, amountSats: number, macaroon: string): void
   getInvoice(paymentHash: string): StoredInvoice | undefined
   close(): void
