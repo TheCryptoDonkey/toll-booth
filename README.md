@@ -160,6 +160,30 @@ import { createWebStandardMiddleware } from '@thecryptodonkey/toll-booth/adapter
 
 ## Payment flow
 
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant T as toll-booth
+    participant U as Upstream API
+
+    C->>T: GET /api/resource
+    T->>T: Check free tier
+    alt Free tier available
+        T->>U: Proxy request
+        U-->>T: Response
+        T-->>C: 200 + X-Free-Remaining header
+    else Free tier exhausted
+        T-->>C: 402 + Invoice + Macaroon
+        C->>C: Pay via Lightning / Cashu / NWC
+        C->>T: GET /api/resource<br/>Authorization: L402 macaroon:preimage
+        T->>T: Verify macaroon + preimage
+        T->>T: Settle credit + debit cost
+        T->>U: Proxy request
+        U-->>T: Response
+        T-->>C: 200 + X-Credit-Balance header
+    end
+```
+
 1. Client requests a priced endpoint without credentials
 2. Free tier checked — if allowance remains, request passes through
 3. If exhausted → **402** response with BOLT-11 invoice + macaroon
