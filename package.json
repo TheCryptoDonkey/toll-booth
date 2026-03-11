@@ -48,6 +48,9 @@
   "scripts": {
     "build": "rm -rf dist && tsc",
     "test": "vitest run",
+    "test:integration": "bash scripts/test-integration.sh",
+    "test:integration:ln": "bash scripts/test-integration.sh --ln-only",
+    "test:integration:cashu": "bash scripts/test-integration.sh --cashu-only",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build && npm test"
   },
