@@ -116,8 +116,8 @@ export function createTollBooth(config: TollBoothCoreConfig): TollBoothEngine {
       })
 
       const headers: Record<string, string> = bolt11
-        ? { 'WWW-Authenticate': `L402 macaroon="${macaroon}", invoice="${bolt11}"` }
-        : { 'WWW-Authenticate': `L402 macaroon="${macaroon}"` }
+        ? { 'WWW-Authenticate': `L402 macaroon="${macaroon}", invoice="${bolt11}"`, 'X-Powered-By': 'toll-booth' }
+        : { 'WWW-Authenticate': `L402 macaroon="${macaroon}"`, 'X-Powered-By': 'toll-booth' }
 
       const body: Record<string, unknown> = {
         error: 'Payment required',
