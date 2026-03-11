@@ -5,15 +5,42 @@
   "description": "L402 Lightning payment middleware for any Node.js framework — Express, Hono, Deno, Bun",
   "license": "MIT",
   "exports": {
-    ".": { "import": "./dist/index.js", "types": "./dist/index.d.ts" },
-    "./backends/phoenixd": { "import": "./dist/backends/phoenixd.js", "types": "./dist/backends/phoenixd.d.ts" },
-    "./backends/lnd": { "import": "./dist/backends/lnd.js", "types": "./dist/backends/lnd.d.ts" },
-    "./backends/alby": { "import": "./dist/backends/alby.js", "types": "./dist/backends/alby.d.ts" },
-    "./storage/sqlite": { "import": "./dist/storage/sqlite.js", "types": "./dist/storage/sqlite.d.ts" },
-    "./storage/memory": { "import": "./dist/storage/memory.js", "types": "./dist/storage/memory.d.ts" },
-    "./adapters/hono": { "import": "./dist/adapters/hono.js", "types": "./dist/adapters/hono.d.ts" },
-    "./adapters/express": { "import": "./dist/adapters/express.js", "types": "./dist/adapters/express.d.ts" },
-    "./adapters/web-standard": { "import": "./dist/adapters/web-standard.js", "types": "./dist/adapters/web-standard.d.ts" }
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./backends/phoenixd": {
+      "import": "./dist/backends/phoenixd.js",
+      "types": "./dist/backends/phoenixd.d.ts"
+    },
+    "./backends/lnd": {
+      "import": "./dist/backends/lnd.js",
+      "types": "./dist/backends/lnd.d.ts"
+    },
+    "./backends/alby": {
+      "import": "./dist/backends/alby.js",
+      "types": "./dist/backends/alby.d.ts"
+    },
+    "./storage/sqlite": {
+      "import": "./dist/storage/sqlite.js",
+      "types": "./dist/storage/sqlite.d.ts"
+    },
+    "./storage/memory": {
+      "import": "./dist/storage/memory.js",
+      "types": "./dist/storage/memory.d.ts"
+    },
+    "./adapters/hono": {
+      "import": "./dist/adapters/hono.js",
+      "types": "./dist/adapters/hono.d.ts"
+    },
+    "./adapters/express": {
+      "import": "./dist/adapters/express.js",
+      "types": "./dist/adapters/express.d.ts"
+    },
+    "./adapters/web-standard": {
+      "import": "./dist/adapters/web-standard.js",
+      "types": "./dist/adapters/web-standard.d.ts"
+    }
   },
   "files": [
     "dist"
@@ -30,14 +57,19 @@
     "qrcode": "^1.5.4"
   },
   "peerDependencies": {
-    "hono": "^4.0.0",
-    "express": "^4.0.0 || ^5.0.0"
+    "express": "^4.0.0 || ^5.0.0",
+    "hono": "^4.0.0"
   },
   "peerDependenciesMeta": {
-    "hono": { "optional": true },
-    "express": { "optional": true }
+    "hono": {
+      "optional": true
+    },
+    "express": {
+      "optional": true
+    }
   },
   "devDependencies": {
+    "@cashu/cashu-ts": "^3.5.0",
     "@hono/node-server": "^1.19.9",
     "@types/better-sqlite3": "^7.6.0",
     "@types/express": "^5.0.6",
