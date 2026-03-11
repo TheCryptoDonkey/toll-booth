@@ -47,7 +47,7 @@ const booth = new Booth({
   },
   onRequest: (event) => {
     const auth = event.authenticated ? 'L402' : 'free'
-    console.log(`[${auth}] ${event.endpoint} | -${event.satsDeducted} sats | ${event.latencyMs}ms`)
+    console.log(`[${auth}] ${event.endpoint} | ${event.clientIp} | -${event.satsDeducted} sats | ${event.latencyMs}ms`)
   },
 })
 

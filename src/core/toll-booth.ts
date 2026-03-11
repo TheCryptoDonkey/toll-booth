@@ -52,6 +52,7 @@ export function createTollBooth(config: TollBoothCoreConfig): TollBoothEngine {
             remainingBalance: result.remaining,
             latencyMs: Date.now() - start,
             authenticated: true,
+            clientIp: req.ip,
           })
           return {
             action: 'proxy',
@@ -74,6 +75,7 @@ export function createTollBooth(config: TollBoothCoreConfig): TollBoothEngine {
             remainingBalance: 0,
             latencyMs: Date.now() - start,
             authenticated: false,
+            clientIp: req.ip,
           })
           return {
             action: 'proxy',
@@ -110,6 +112,7 @@ export function createTollBooth(config: TollBoothCoreConfig): TollBoothEngine {
         timestamp: new Date().toISOString(),
         endpoint: path,
         amountSats: defaultAmount,
+        clientIp: req.ip,
       })
 
       const headers: Record<string, string> = bolt11
