@@ -16,6 +16,8 @@ npm run typecheck   # tsc --noEmit
 src/
   index.ts                  # Public API exports
   types.ts                  # LightningBackend, BoothConfig, Invoice, CreditTier, events
+  types/
+    macaroon.d.ts           # Ambient type declarations for untyped `macaroon` npm package
   booth.ts                  # Booth class: facade that wires engine + adapters + storage
   macaroon.ts               # Macaroon minting, verification, caveat parsing
   free-tier.ts              # Per-IP daily allowance tracking (in-memory)
@@ -43,10 +45,27 @@ src/
     lnbits.ts               # LNbits Lightning backend (REST API)
     alby.ts                 # Alby / NWC Lightning backend
     conformance.ts          # Shared backend conformance test factory
+  e2e/
+    l402-flow.integration.test.ts
+    cashu-only.integration.test.ts
+    cashu-redeem.integration.test.ts
 
 examples/
   valhalla-proxy/           # Complete Docker Compose reference deployment (Express)
 ```
+
+## Testing
+
+Unit tests are co-located with source files (`*.test.ts` next to `*.ts`). Integration tests live in `src/e2e/` and require running backends:
+
+```bash
+npm test                              # unit tests only (no env vars needed)
+LND_REST_URL=... LND_MACAROON=... npm test -- src/backends/lnd.integration.test.ts
+CLN_REST_URL=... CLN_RUNE=... npm test -- src/backends/cln.integration.test.ts
+PHOENIXD_URL=... PHOENIXD_PASSWORD=... npm test -- src/backends/phoenixd.integration.test.ts
+```
+
+Backend conformance tests (`conformance.ts`) export a shared factory; each backend's integration test uses it.
 
 ## Architecture
 
