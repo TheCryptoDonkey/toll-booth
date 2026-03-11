@@ -5,6 +5,10 @@ import type { CreateInvoiceDeps } from '../core/create-invoice.js'
 import type { InvoiceStatusDeps } from '../core/invoice-status.js'
 import { handleCreateInvoice } from '../core/create-invoice.js'
 import { handleInvoiceStatus, renderInvoiceStatusHtml } from '../core/invoice-status.js'
+import { handleNwcPay } from '../core/nwc-pay.js'
+import type { NwcPayDeps } from '../core/nwc-pay.js'
+import { handleCashuRedeem } from '../core/cashu-redeem.js'
+import type { CashuRedeemDeps } from '../core/cashu-redeem.js'
 import { PAYMENT_HASH_RE } from '../core/types.js'
 
 // -- Middleware ---------------------------------------------------------------
@@ -33,6 +37,17 @@ export function createExpressMiddleware(
     ? { engine: engineOrConfig as TollBoothEngine, upstream: upstreamArg }
     : engineOrConfig as ExpressMiddlewareConfig
   const engine = config.engine
+
+  // Warn when free-tier is enabled without trustProxy (P3) — all requests
+  // will share a single socket.remoteAddress behind a reverse proxy.
+  if (engine.freeTier && !config.trustProxy) {
+    console.error(
+      '[toll-booth] WARNING: freeTier enabled without trustProxy in Express adapter. ' +
+      'Behind a reverse proxy all clients will share one IP bucket. ' +
+      'Set trustProxy: true or provide a getClientIp callback.',
+    )
+  }
+
   const upstreamBase = config.upstream.replace(/\/$/, '')
   const extraHeaders = config.responseHeaders ?? {}
   const upstreamTimeout = config.upstreamTimeout ?? 30_000
@@ -196,5 +211,47 @@ export function createExpressCreateInvoiceHandler(
       macaroon: d.macaroon,
       qr_svg: d.qrSvg,
     })
+  }
+}
+
+// -- NWC handler --------------------------------------------------------------
+
+/**
+ * Returns an Express `RequestHandler` that pays a Lightning invoice via NWC.
+ *
+ * Expects JSON body with `{ nwcUri, bolt11, paymentHash, statusToken }`.
+ * Returns the payment preimage on success.
+ */
+export function createExpressNwcHandler(deps: NwcPayDeps): RequestHandler {
+  return async (req: Request, res: Response, _next: NextFunction) => {
+    const body = req.body ?? {}
+    const result = await handleNwcPay(deps, body)
+    if (result.success) {
+      res.json({ preimage: result.preimage })
+    } else {
+      res.status(result.status).json({ error: result.error })
+    }
+  }
+}
+
+// -- Cashu handler ------------------------------------------------------------
+
+/**
+ * Returns an Express `RequestHandler` that redeems a Cashu token as payment.
+ *
+ * Expects JSON body with `{ token, paymentHash, statusToken }`.
+ * Uses durable write-ahead claims for crash-safe redemption.
+ */
+export function createExpressCashuHandler(deps: CashuRedeemDeps): RequestHandler {
+  return async (req: Request, res: Response, _next: NextFunction) => {
+    const body = req.body ?? {}
+    const result = await handleCashuRedeem(deps, body)
+    if (result.success) {
+      res.json({ credited: result.credited, token_suffix: result.tokenSuffix })
+    } else if ('state' in result) {
+      res.status(202).json({ state: result.state, retryAfterMs: result.retryAfterMs })
+    } else {
+      res.status(result.status).json({ error: result.error })
+    }
   }
 }

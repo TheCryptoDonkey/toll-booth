@@ -193,7 +193,7 @@ function handleL402Auth(
 }
 
 function isValidLightningPreimage(preimage: string, paymentHash: string): boolean {
-  if (!/^[0-9a-fA-F]{64}$/.test(preimage)) return false
+  if (!/^[0-9a-f]{64}$/.test(preimage)) return false
   const computedHash = createHash('sha256')
     .update(Buffer.from(preimage, 'hex'))
     .digest('hex')

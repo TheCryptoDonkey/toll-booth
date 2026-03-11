@@ -54,5 +54,7 @@ export interface StorageBackend {
   storeInvoice(paymentHash: string, bolt11: string, amountSats: number, macaroon: string, statusToken: string): void
   getInvoice(paymentHash: string): StoredInvoice | undefined
   getInvoiceForStatus(paymentHash: string, statusToken: string): StoredInvoice | undefined
+  /** Delete invoices older than maxAgeMs. Returns the number of deleted rows. */
+  pruneExpiredInvoices(maxAgeMs: number): number
   close(): void
 }

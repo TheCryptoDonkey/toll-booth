@@ -8,19 +8,24 @@ import { createTollBooth } from './core/toll-booth.js'
 import { sqliteStorage } from './storage/sqlite.js'
 import { StatsCollector } from './stats.js'
 import { randomBytes } from 'node:crypto'
+import { REDEEM_LEASE_MS } from './core/cashu-redeem.js'
 
 import {
-  createHonoMiddleware,
-  createHonoInvoiceStatusHandler,
-  createHonoCreateInvoiceHandler,
-  createHonoNwcHandler,
-  createHonoCashuHandler,
-  REDEEM_LEASE_MS,
-} from './adapters/hono.js'
-import { createExpressMiddleware, createExpressInvoiceStatusHandler, createExpressCreateInvoiceHandler } from './adapters/express.js'
-import { createWebStandardMiddleware, createWebStandardInvoiceStatusHandler, createWebStandardCreateInvoiceHandler } from './adapters/web-standard.js'
+  createExpressMiddleware,
+  createExpressInvoiceStatusHandler,
+  createExpressCreateInvoiceHandler,
+  createExpressNwcHandler,
+  createExpressCashuHandler,
+} from './adapters/express.js'
+import {
+  createWebStandardMiddleware,
+  createWebStandardInvoiceStatusHandler,
+  createWebStandardCreateInvoiceHandler,
+  createWebStandardNwcHandler,
+  createWebStandardCashuHandler,
+} from './adapters/web-standard.js'
 
-export type AdapterType = 'hono' | 'express' | 'web-standard'
+export type AdapterType = 'express' | 'web-standard'
 
 export interface BoothOptions extends BoothConfig {
   adapter: AdapterType
@@ -32,12 +37,11 @@ export interface BoothOptions extends BoothConfig {
  * and wallet adapter endpoints with shared internal state.
  *
  * The `adapter` option selects the framework integration:
- * - `'hono'` — Hono middleware and handlers
  * - `'express'` — Express middleware and handlers
  * - `'web-standard'` — Web Standards (Request/Response) handlers
  *
  * ```typescript
- * const booth = new Booth({ adapter: 'hono', ...config })
+ * const booth = new Booth({ adapter: 'express', ...config })
  * app.get('/invoice-status/:paymentHash', booth.invoiceStatusHandler)
  * app.post('/create-invoice', booth.createInvoiceHandler)
  * app.use('/*', booth.middleware)
@@ -57,6 +61,7 @@ export class Booth {
   private readonly engine: TollBoothEngine
   private readonly rootKey: string
   private readonly redeemCashu?: (token: string, paymentHash: string) => Promise<number>
+  private readonly pruneTimer?: ReturnType<typeof setInterval>
 
   constructor(config: BoothOptions & EventHandler) {
     if (!config.backend && !config.redeemCashu) {
@@ -134,31 +139,44 @@ export class Booth {
       upstreamTimeout: config.upstreamTimeout,
     }
 
-    switch (config.adapter) {
-      case 'hono':
-        this.middleware = createHonoMiddleware(adapterConfig)
-        this.invoiceStatusHandler = createHonoInvoiceStatusHandler(invoiceStatusDeps)
-        this.createInvoiceHandler = createHonoCreateInvoiceHandler(createInvoiceDeps)
-        if (config.nwcPayInvoice) {
-          this.nwcPayHandler = createHonoNwcHandler(config.nwcPayInvoice, this.storage)
-        }
-        if (config.redeemCashu) {
-          this.redeemCashu = config.redeemCashu
-          this.cashuRedeemHandler = createHonoCashuHandler(config.redeemCashu, this.storage)
-        }
-        break
+    const nwcPayDeps = config.nwcPayInvoice
+      ? { nwcPay: config.nwcPayInvoice, storage: this.storage }
+      : undefined
 
+    const cashuRedeemDeps = config.redeemCashu
+      ? { redeem: config.redeemCashu, storage: this.storage }
+      : undefined
+
+    switch (config.adapter) {
       case 'express':
         this.middleware = createExpressMiddleware(adapterConfig)
         this.invoiceStatusHandler = createExpressInvoiceStatusHandler(invoiceStatusDeps)
         this.createInvoiceHandler = createExpressCreateInvoiceHandler(createInvoiceDeps)
+        if (nwcPayDeps) this.nwcPayHandler = createExpressNwcHandler(nwcPayDeps)
+        if (cashuRedeemDeps) {
+          this.redeemCashu = config.redeemCashu
+          this.cashuRedeemHandler = createExpressCashuHandler(cashuRedeemDeps)
+        }
         break
 
       case 'web-standard':
         this.middleware = createWebStandardMiddleware(adapterConfig)
         this.invoiceStatusHandler = createWebStandardInvoiceStatusHandler(invoiceStatusDeps)
         this.createInvoiceHandler = createWebStandardCreateInvoiceHandler(createInvoiceDeps)
+        if (nwcPayDeps) this.nwcPayHandler = createWebStandardNwcHandler(nwcPayDeps)
+        if (cashuRedeemDeps) {
+          this.redeemCashu = config.redeemCashu
+          this.cashuRedeemHandler = createWebStandardCashuHandler(cashuRedeemDeps)
+        }
         break
+    }
+
+    // Invoice expiry pruning
+    const maxAge = config.invoiceMaxAgeMs ?? 86_400_000 // 24 hours
+    if (maxAge > 0) {
+      this.pruneTimer = setInterval(() => {
+        this.storage.pruneExpiredInvoices(maxAge)
+      }, 3_600_000) // every hour
     }
 
     // Auto-recover any pending Cashu claims from a previous crash
@@ -217,6 +235,7 @@ export class Booth {
   }
 
   close(): void {
+    if (this.pruneTimer) clearInterval(this.pruneTimer)
     this.storage.close()
   }
 }

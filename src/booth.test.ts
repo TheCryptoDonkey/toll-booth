@@ -1,11 +1,11 @@
 // src/booth.test.ts
 import { describe, it, expect, vi } from 'vitest'
 import { createHash } from 'node:crypto'
-import { Hono } from 'hono'
 import { Booth } from './booth.js'
 import { memoryStorage } from './storage/memory.js'
 import { sqliteStorage } from './storage/sqlite.js'
 import type { LightningBackend, CreditTier } from './types.js'
+import type { WebStandardHandler } from './adapters/web-standard.js'
 
 const ROOT_KEY = 'a'.repeat(64)
 
@@ -31,7 +31,7 @@ function setup(overrides?: Partial<{
   nwcPayInvoice: any
   redeemCashu: any
   trustProxy: boolean
-  getClientIp: (request: unknown) => string
+  getClientIp: (req: unknown) => string
   freeTier: { requestsPerDay: number }
   upstream: string
 }>) {
@@ -46,24 +46,37 @@ function setup(overrides?: Partial<{
   }
 
   const booth = new Booth({
-    adapter: 'hono',
+    adapter: 'web-standard',
     backend,
     pricing: { '/route': 2 },
     upstream: 'http://localhost:8002',
     rootKey: ROOT_KEY,
     storage: memoryStorage(),
     creditTiers: TIERS,
+    getClientIp: () => '127.0.0.1',
     ...overrides,
   })
 
-  const app = new Hono()
-  app.get('/invoice-status/:paymentHash', booth.invoiceStatusHandler as any)
-  app.post('/create-invoice', booth.createInvoiceHandler as any)
-  if (booth.nwcPayHandler) app.post('/nwc-pay', booth.nwcPayHandler as any)
-  if (booth.cashuRedeemHandler) app.post('/cashu-redeem', booth.cashuRedeemHandler as any)
-  app.use('/*', booth.middleware as any)
+  const middleware = booth.middleware as WebStandardHandler
+  const invoiceStatusHandler = booth.invoiceStatusHandler as WebStandardHandler
+  const createInvoiceHandler = booth.createInvoiceHandler as WebStandardHandler
+  const nwcPayHandler = booth.nwcPayHandler as WebStandardHandler | undefined
+  const cashuRedeemHandler = booth.cashuRedeemHandler as WebStandardHandler | undefined
 
-  return { app, booth, backend, preimage, paymentHash }
+  /** Route a Request to the appropriate handler based on URL path. */
+  async function request(input: string | URL, init?: RequestInit): Promise<Response> {
+    const url = new URL(input, 'http://localhost')
+    const req = new Request(url, init)
+    const path = url.pathname
+
+    if (path.startsWith('/invoice-status/')) return invoiceStatusHandler(req)
+    if (path === '/create-invoice') return createInvoiceHandler(req)
+    if (path === '/nwc-pay' && nwcPayHandler) return nwcPayHandler(req)
+    if (path === '/cashu-redeem' && cashuRedeemHandler) return cashuRedeemHandler(req)
+    return middleware(req)
+  }
+
+  return { request, booth, backend, preimage, paymentHash }
 }
 
 describe('Booth', () => {
@@ -72,27 +85,26 @@ describe('Booth', () => {
       const dbPath = `/tmp/toll-booth-persist-${Date.now()}-${Math.random().toString(16).slice(2)}.db`
 
       const booth1 = new Booth({
-        adapter: 'hono',
+        adapter: 'web-standard',
         backend: { createInvoice: vi.fn(), checkInvoice: vi.fn() },
         pricing: {},
         upstream: 'http://localhost',
         rootKey: ROOT_KEY,
         dbPath,
+        getClientIp: () => '127.0.0.1',
       })
 
-      // Store some data via the internal storage
-      const app1 = new Hono()
-      app1.use('/*', booth1.middleware as any)
       booth1.close()
 
       // Open a second Booth with the same dbPath — should see the same DB
       const booth2 = new Booth({
-        adapter: 'hono',
+        adapter: 'web-standard',
         backend: { createInvoice: vi.fn(), checkInvoice: vi.fn() },
         pricing: {},
         upstream: 'http://localhost',
         rootKey: ROOT_KEY,
         dbPath,
+        getClientIp: () => '127.0.0.1',
       })
       // If we got here without error, persistence is working (SQLite opened the file)
       booth2.close()
@@ -105,14 +117,13 @@ describe('Booth', () => {
     })
 
     it('uses default ./toll-booth.db when no storage or dbPath provided', () => {
-      // This test just verifies it doesn't use :memory: by default
-      // We can't easily assert the path, but we can verify it doesn't throw
       const booth = new Booth({
-        adapter: 'hono',
+        adapter: 'web-standard',
         backend: { createInvoice: vi.fn(), checkInvoice: vi.fn() },
         pricing: {},
         upstream: 'http://localhost',
         rootKey: ROOT_KEY,
+        getClientIp: () => '127.0.0.1',
       })
       booth.close()
       // Clean up the default file
@@ -124,20 +135,21 @@ describe('Booth', () => {
 
     it('throws when both storage and dbPath are provided', () => {
       expect(() => new Booth({
-        adapter: 'hono',
+        adapter: 'web-standard',
         backend: { createInvoice: vi.fn(), checkInvoice: vi.fn() },
         pricing: {},
         upstream: 'http://localhost',
         rootKey: ROOT_KEY,
         storage: memoryStorage(),
         dbPath: '/tmp/should-not-be-used.db',
+        getClientIp: () => '127.0.0.1',
       })).toThrow(/Provide either storage or dbPath, not both/)
     })
   })
 
   describe('client IP resolution', () => {
-    it('passes getClientIp through to the Hono adapter', async () => {
-      const { app, booth } = setup({
+    it('passes getClientIp through to the web-standard adapter', async () => {
+      const { request, booth } = setup({
         freeTier: { requestsPerDay: 2 },
         getClientIp: () => '1.2.3.4',
         upstream: 'http://upstream.test',
@@ -147,13 +159,13 @@ describe('Booth', () => {
       )
 
       try {
-        const res1 = await app.request('/route', { method: 'POST' })
+        const res1 = await request('/route', { method: 'POST' })
         expect(res1.status).toBe(200)
 
-        const res2 = await app.request('/route', { method: 'POST' })
+        const res2 = await request('/route', { method: 'POST' })
         expect(res2.status).toBe(200)
 
-        const res3 = await app.request('/route', { method: 'POST' })
+        const res3 = await request('/route', { method: 'POST' })
         expect(res3.status).toBe(402)
       } finally {
         fetchSpy.mockRestore()
@@ -165,23 +177,25 @@ describe('Booth', () => {
   describe('rootKey validation', () => {
     it('rejects a short rootKey', () => {
       expect(() => new Booth({
-        adapter: 'hono',
+        adapter: 'web-standard',
         backend: { createInvoice: vi.fn(), checkInvoice: vi.fn() },
         pricing: {},
         upstream: 'http://localhost',
         rootKey: 'abc',
         storage: memoryStorage(),
+        getClientIp: () => '127.0.0.1',
       })).toThrow(/64 hex characters/)
     })
 
     it('accepts a valid 64-char hex rootKey', () => {
       const booth = new Booth({
-        adapter: 'hono',
+        adapter: 'web-standard',
         backend: { createInvoice: vi.fn(), checkInvoice: vi.fn() },
         pricing: {},
         upstream: 'http://localhost',
         rootKey: 'a'.repeat(64),
         storage: memoryStorage(),
+        getClientIp: () => '127.0.0.1',
       })
       booth.close()
     })
@@ -189,8 +203,8 @@ describe('Booth', () => {
 
   describe('paymentHash validation', () => {
     it('rejects non-hex payment hash in invoice status', async () => {
-      const { app, booth } = setup()
-      const res = await app.request('/invoice-status/not-a-valid-hash')
+      const { request, booth } = setup()
+      const res = await request('/invoice-status/not-a-valid-hash')
       expect(res.status).toBe(400)
       const body = await res.json()
       expect(body.error).toBe('Invalid payment hash')
@@ -199,9 +213,9 @@ describe('Booth', () => {
   })
 
   it('issues 402 with payment_url and stores invoice', async () => {
-    const { app, booth, paymentHash } = setup()
+    const { request, booth, paymentHash } = setup()
 
-    const res = await app.request('/route', { method: 'POST' })
+    const res = await request('/route', { method: 'POST' })
     expect(res.status).toBe(402)
 
     const body = await res.json()
@@ -212,14 +226,14 @@ describe('Booth', () => {
   })
 
   it('serves HTML payment page at /invoice-status/:paymentHash', async () => {
-    const { app, booth, paymentHash } = setup()
+    const { request, booth } = setup()
 
     // First trigger a 402 to store the invoice
-    const challenge = await app.request('/route', { method: 'POST' })
+    const challenge = await request('/route', { method: 'POST' })
     const challengeBody = await challenge.json()
 
     // Now request the payment page
-    const res = await app.request(challengeBody.payment_url, {
+    const res = await request(challengeBody.payment_url, {
       headers: { 'Accept': 'text/html' },
     })
 
@@ -235,14 +249,14 @@ describe('Booth', () => {
   })
 
   it('serves JSON invoice status at /invoice-status/:paymentHash', async () => {
-    const { app, booth, backend, paymentHash } = setup()
+    const { request, booth, backend } = setup()
     vi.mocked(backend.checkInvoice).mockResolvedValue({ paid: false })
 
     // Store the invoice first
-    const challenge = await app.request('/route', { method: 'POST' })
+    const challenge = await request('/route', { method: 'POST' })
     const challengeBody = await challenge.json()
 
-    const res = await app.request(challengeBody.payment_url, {
+    const res = await request(challengeBody.payment_url, {
       headers: { 'Accept': 'application/json' },
     })
 
@@ -253,9 +267,9 @@ describe('Booth', () => {
   })
 
   it('creates invoice via POST /create-invoice', async () => {
-    const { app, booth } = setup()
+    const { request, booth } = setup()
 
-    const res = await app.request('/create-invoice', {
+    const res = await request('/create-invoice', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ amountSats: 10_000 }),
@@ -270,9 +284,9 @@ describe('Booth', () => {
   })
 
   it('rejects invalid tier in POST /create-invoice', async () => {
-    const { app, booth } = setup()
+    const { request, booth } = setup()
 
-    const res = await app.request('/create-invoice', {
+    const res = await request('/create-invoice', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ amountSats: 5000 }),
@@ -289,13 +303,13 @@ describe('Booth', () => {
     it('pays via NWC and returns preimage', async () => {
       const { preimage } = makePreimageAndHash()
       const nwcPayInvoice = vi.fn().mockResolvedValue(preimage)
-      const { app, booth, paymentHash } = setup({ nwcPayInvoice })
+      const { request, booth, paymentHash } = setup({ nwcPayInvoice })
 
-      const challengeRes = await app.request('/route', { method: 'POST' })
+      const challengeRes = await request('/route', { method: 'POST' })
       const challengeBody = await challengeRes.json()
       const statusToken = extractStatusToken(challengeBody.payment_url)
 
-      const res = await app.request('/nwc-pay', {
+      const res = await request('/nwc-pay', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -324,14 +338,14 @@ describe('Booth', () => {
   describe('Cashu adapter', () => {
     it('redeems Cashu token and credits storage', async () => {
       const redeemCashu = vi.fn().mockResolvedValue(500)
-      const { app, booth, paymentHash } = setup({ redeemCashu })
+      const { request, booth, paymentHash } = setup({ redeemCashu })
 
       // Trigger a 402 to store the invoice for this paymentHash
-      const challengeRes = await app.request('/route', { method: 'POST' })
+      const challengeRes = await request('/route', { method: 'POST' })
       const challengeBody = await challengeRes.json()
       const statusToken = extractStatusToken(challengeBody.payment_url)
 
-      const res = await app.request('/cashu-redeem', {
+      const res = await request('/cashu-redeem', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token: 'cashuA...', paymentHash, statusToken }),
@@ -349,22 +363,22 @@ describe('Booth', () => {
 
     it('is idempotent on duplicate Cashu redemption', async () => {
       const redeemCashu = vi.fn().mockResolvedValue(500)
-      const { app, booth, paymentHash } = setup({ redeemCashu })
+      const { request, booth, paymentHash } = setup({ redeemCashu })
 
       // Trigger a 402 to store the invoice
-      const challengeRes = await app.request('/route', { method: 'POST' })
+      const challengeRes = await request('/route', { method: 'POST' })
       const challengeBody = await challengeRes.json()
       const statusToken = extractStatusToken(challengeBody.payment_url)
 
       // First redemption
-      await app.request('/cashu-redeem', {
+      await request('/cashu-redeem', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token: 'cashuA...', paymentHash, statusToken }),
       })
 
       // Second redemption — should not call redeem again or double-credit
-      const res2 = await app.request('/cashu-redeem', {
+      const res2 = await request('/cashu-redeem', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token: 'cashuA...', paymentHash, statusToken }),
@@ -380,10 +394,10 @@ describe('Booth', () => {
 
     it('concurrent Cashu redemptions: only one wins, other gets 202', async () => {
       const redeemCashu = vi.fn().mockResolvedValue(500)
-      const { app, booth, paymentHash } = setup({ redeemCashu })
+      const { request, booth, paymentHash } = setup({ redeemCashu })
 
       // Trigger a 402 to store the invoice
-      const challengeRes = await app.request('/route', { method: 'POST' })
+      const challengeRes = await request('/route', { method: 'POST' })
       const challengeBody = await challengeRes.json()
       const statusToken = extractStatusToken(challengeBody.payment_url)
 
@@ -396,8 +410,8 @@ describe('Booth', () => {
       // Fire two concurrent requests — only one wins claimForRedeem,
       // the other gets 202 (lease held, cannot recover yet)
       const [r1, r2] = await Promise.all([
-        app.request('/cashu-redeem', makeOpts()),
-        app.request('/cashu-redeem', makeOpts()),
+        request('/cashu-redeem', makeOpts()),
+        request('/cashu-redeem', makeOpts()),
       ])
 
       const statuses = [r1.status, r2.status].sort()
@@ -416,16 +430,16 @@ describe('Booth', () => {
 
     it('Cashu redemption produces a token that authorises access', async () => {
       const redeemCashu = vi.fn().mockResolvedValue(500)
-      const { app, booth, paymentHash } = setup({ redeemCashu })
+      const { request, booth, paymentHash } = setup({ redeemCashu })
 
       // Trigger a 402 to store the invoice
-      const challengeRes = await app.request('/route', { method: 'POST' })
+      const challengeRes = await request('/route', { method: 'POST' })
       const challengeBody = await challengeRes.json()
       const macaroon = challengeBody.macaroon
       const statusToken = extractStatusToken(challengeBody.payment_url)
 
       // Redeem Cashu token
-      const redeemRes = await app.request('/cashu-redeem', {
+      const redeemRes = await request('/cashu-redeem', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token: 'cashuA...', paymentHash, statusToken }),
@@ -439,7 +453,7 @@ describe('Booth', () => {
 
       try {
         // Use the macaroon with redemption token suffix — should authorise
-        const authedRes = await app.request('/route', {
+        const authedRes = await request('/route', {
           method: 'POST',
           headers: { Authorization: `L402 ${macaroon}:${tokenSuffix}` },
         })
@@ -461,12 +475,13 @@ describe('Booth', () => {
       storage.storeInvoice('abc123', 'lnbc...', 1000, 'mac1', 'token1')
 
       const booth = new Booth({
-        adapter: 'hono',
+        adapter: 'web-standard',
         backend: { createInvoice: vi.fn(), checkInvoice: vi.fn() },
         pricing: {},
         upstream: 'http://localhost',
         rootKey: ROOT_KEY,
         storage,
+        getClientIp: () => '127.0.0.1',
       })
 
       const recovered = await booth.recoverPendingClaims(redeemCashu)
@@ -488,12 +503,13 @@ describe('Booth', () => {
       storage.claimForRedeem('abc123', 'cashuA...', -1)
 
       const booth = new Booth({
-        adapter: 'hono',
+        adapter: 'web-standard',
         backend: { createInvoice: vi.fn(), checkInvoice: vi.fn() },
         pricing: {},
         upstream: 'http://localhost',
         rootKey: ROOT_KEY,
         storage,
+        getClientIp: () => '127.0.0.1',
       })
 
       const recovered = await booth.recoverPendingClaims(redeemCashu)
@@ -515,12 +531,13 @@ describe('Booth', () => {
       storage.claimForRedeem('abc123', 'cashuA...', 30_000)
 
       const booth = new Booth({
-        adapter: 'hono',
+        adapter: 'web-standard',
         backend: { createInvoice: vi.fn(), checkInvoice: vi.fn() },
         pricing: {},
         upstream: 'http://localhost',
         rootKey: ROOT_KEY,
         storage,
+        getClientIp: () => '127.0.0.1',
       })
 
       const recovered = await booth.recoverPendingClaims(redeemCashu)
@@ -544,12 +561,13 @@ describe('Booth', () => {
         )
 
         const booth = new Booth({
-          adapter: 'hono',
+          adapter: 'web-standard',
           backend: { createInvoice: vi.fn(), checkInvoice: vi.fn() },
           pricing: {},
           upstream: 'http://localhost',
           rootKey: ROOT_KEY,
           storage,
+          getClientIp: () => '127.0.0.1',
         })
 
         const recoveryPromise = booth.recoverPendingClaims(redeemCashu)
@@ -581,13 +599,14 @@ describe('Booth', () => {
       storage.claimForRedeem('abc123', 'cashuA...', -1)
 
       const booth = new Booth({
-        adapter: 'hono',
+        adapter: 'web-standard',
         backend: { createInvoice: vi.fn(), checkInvoice: vi.fn() },
         pricing: {},
         upstream: 'http://localhost',
         rootKey: ROOT_KEY,
         storage,
         redeemCashu,
+        getClientIp: () => '127.0.0.1',
       })
 
       // Auto-recovery runs asynchronously — give it a tick
@@ -609,13 +628,14 @@ describe('Booth', () => {
 
       const redeemCashu = vi.fn().mockResolvedValue(500)
       const booth = new Booth({
-        adapter: 'hono',
+        adapter: 'web-standard',
         backend: { createInvoice: vi.fn(), checkInvoice: vi.fn() },
         pricing: {},
         upstream: 'http://localhost',
         rootKey: ROOT_KEY,
         storage: sqliteStorage({ path: dbPath }),
         redeemCashu,
+        getClientIp: () => '127.0.0.1',
       })
 
       // Auto-recovery runs asynchronously — give it a tick
@@ -631,11 +651,11 @@ describe('Booth', () => {
 
     it('rejects unknown paymentHash that has no stored invoice', async () => {
       const redeemCashu = vi.fn().mockResolvedValue(500)
-      const { app, booth } = setup({ redeemCashu })
+      const { request, booth } = setup({ redeemCashu })
 
       // Post with a valid-format but never-issued paymentHash
       const unknownHash = 'c'.repeat(64)
-      const res = await app.request('/cashu-redeem', {
+      const res = await request('/cashu-redeem', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token: 'cashuA...', paymentHash: unknownHash, statusToken: 'invalid' }),
@@ -652,14 +672,14 @@ describe('Booth', () => {
 
     it('returns 202 pending when initial redeem fails (transient error)', async () => {
       const redeemCashu = vi.fn().mockRejectedValue(new Error('ECONNREFUSED'))
-      const { app, booth, paymentHash } = setup({ redeemCashu })
+      const { request, booth, paymentHash } = setup({ redeemCashu })
 
       // Store the invoice
-      const challengeRes = await app.request('/route', { method: 'POST' })
+      const challengeRes = await request('/route', { method: 'POST' })
       const challengeBody = await challengeRes.json()
       const statusToken = extractStatusToken(challengeBody.payment_url)
 
-      const res = await app.request('/cashu-redeem', {
+      const res = await request('/cashu-redeem', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token: 'cashuA...', paymentHash, statusToken }),
@@ -679,15 +699,15 @@ describe('Booth', () => {
         const redeemCashu = vi.fn()
           .mockRejectedValueOnce(new Error('ECONNREFUSED'))
           .mockResolvedValueOnce(500)
-        const { app, booth, paymentHash } = setup({ redeemCashu })
+        const { request, booth, paymentHash } = setup({ redeemCashu })
 
         // Store the invoice
-        const challengeRes = await app.request('/route', { method: 'POST' })
+        const challengeRes = await request('/route', { method: 'POST' })
         const challengeBody = await challengeRes.json()
         const statusToken = extractStatusToken(challengeBody.payment_url)
 
         // First attempt — mint fails, claim is pending with active lease
-        const res1 = await app.request('/cashu-redeem', {
+        const res1 = await request('/cashu-redeem', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ token: 'cashuA...', paymentHash, statusToken }),
@@ -698,7 +718,7 @@ describe('Booth', () => {
         vi.advanceTimersByTime(31_000)
 
         // Second attempt — lease expired, recovery succeeds
-        const res2 = await app.request('/cashu-redeem', {
+        const res2 = await request('/cashu-redeem', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ token: 'cashuA...', paymentHash, statusToken }),
@@ -719,15 +739,15 @@ describe('Booth', () => {
       vi.useFakeTimers()
       try {
         const redeemCashu = vi.fn().mockRejectedValue(new Error('ECONNREFUSED'))
-        const { app, booth, paymentHash } = setup({ redeemCashu })
+        const { request, booth, paymentHash } = setup({ redeemCashu })
 
         // Store the invoice
-        const challengeRes = await app.request('/route', { method: 'POST' })
+        const challengeRes = await request('/route', { method: 'POST' })
         const challengeBody = await challengeRes.json()
         const statusToken = extractStatusToken(challengeBody.payment_url)
 
         // First attempt — fails
-        const res1 = await app.request('/cashu-redeem', {
+        const res1 = await request('/cashu-redeem', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ token: 'cashuA...', paymentHash, statusToken }),
@@ -738,7 +758,7 @@ describe('Booth', () => {
         vi.advanceTimersByTime(31_000)
 
         // Second attempt — lease expired so recovery is attempted, but also fails
-        const res2 = await app.request('/cashu-redeem', {
+        const res2 = await request('/cashu-redeem', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ token: 'cashuA...', paymentHash, statusToken }),
@@ -760,15 +780,15 @@ describe('Booth', () => {
         const redeemCashu = vi.fn()
           .mockRejectedValueOnce(new Error('ECONNREFUSED'))  // initial fail
           .mockResolvedValueOnce(500)                         // recovery succeeds
-        const { app, booth, paymentHash } = setup({ redeemCashu })
+        const { request, booth, paymentHash } = setup({ redeemCashu })
 
         // Store the invoice
-        const challengeRes = await app.request('/route', { method: 'POST' })
+        const challengeRes = await request('/route', { method: 'POST' })
         const challengeBody = await challengeRes.json()
         const statusToken = extractStatusToken(challengeBody.payment_url)
 
         // Initial attempt fails — claim with lease
-        await app.request('/cashu-redeem', {
+        await request('/cashu-redeem', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ token: 'cashuA...', paymentHash, statusToken }),
@@ -784,8 +804,8 @@ describe('Booth', () => {
           body: JSON.stringify({ token: 'cashuA...', paymentHash, statusToken }),
         })
         const [r1, r2] = await Promise.all([
-          app.request('/cashu-redeem', makeOpts()),
-          app.request('/cashu-redeem', makeOpts()),
+          request('/cashu-redeem', makeOpts()),
+          request('/cashu-redeem', makeOpts()),
         ])
 
         const statuses = [r1.status, r2.status].sort()
@@ -807,10 +827,10 @@ describe('Booth', () => {
         const redeemCashu = vi.fn().mockImplementation(
           () => new Promise<number>((resolve) => { resolveRedeem = resolve }),
         )
-        const { app, booth, paymentHash } = setup({ redeemCashu })
+        const { request, booth, paymentHash } = setup({ redeemCashu })
 
         // Store the invoice
-        const challengeRes = await app.request('/route', { method: 'POST' })
+        const challengeRes = await request('/route', { method: 'POST' })
         const challengeBody = await challengeRes.json()
         const statusToken = extractStatusToken(challengeBody.payment_url)
 
@@ -821,7 +841,7 @@ describe('Booth', () => {
         }
 
         // First request acquires claim and starts a long-running redeem.
-        const firstPromise = app.request('/cashu-redeem', opts)
+        const firstPromise = request('/cashu-redeem', opts)
         // Let the handler advance to the redeem call under fake timers.
         for (let i = 0; i < 5 && redeemCashu.mock.calls.length === 0; i++) {
           await vi.advanceTimersByTimeAsync(0)
@@ -831,7 +851,7 @@ describe('Booth', () => {
         // Move past the base lease duration; keepalive should have renewed it.
         vi.advanceTimersByTime(31_000)
 
-        const second = await app.request('/cashu-redeem', opts)
+        const second = await request('/cashu-redeem', opts)
         expect(second.status).toBe(202)
         const secondBody = await second.json()
         expect(secondBody.state).toBe('pending')
@@ -857,10 +877,10 @@ describe('Booth', () => {
   })
 
   it('records stats from middleware events', async () => {
-    const { app, booth } = setup()
+    const { request, booth } = setup()
 
     // Trigger a 402 challenge
-    await app.request('/route', { method: 'POST' })
+    await request('/route', { method: 'POST' })
 
     const snap = booth.stats.snapshot()
     expect(snap.requests.challenged).toBe(1)
@@ -871,22 +891,24 @@ describe('Booth', () => {
   describe('Cashu-only mode (no backend)', () => {
     it('throws if neither backend nor redeemCashu provided', () => {
       expect(() => new Booth({
-        adapter: 'hono',
+        adapter: 'web-standard',
         pricing: { '/route': 10 },
         upstream: 'http://localhost',
         rootKey: ROOT_KEY,
         storage: memoryStorage(),
+        getClientIp: () => '127.0.0.1',
       })).toThrow(/At least one payment method required/)
     })
 
     it('accepts Cashu-only config with redeemCashu but no backend', () => {
       const booth = new Booth({
-        adapter: 'hono',
+        adapter: 'web-standard',
         pricing: { '/route': 10 },
         upstream: 'http://localhost',
         rootKey: ROOT_KEY,
         storage: memoryStorage(),
         redeemCashu: vi.fn().mockResolvedValue(1000),
+        getClientIp: () => '127.0.0.1',
       })
       expect(booth).toBeDefined()
       expect(booth.cashuRedeemHandler).toBeDefined()
@@ -894,19 +916,18 @@ describe('Booth', () => {
     })
 
     it('issues 402 challenge without bolt11 in Cashu-only mode', async () => {
-      const app = new Hono()
       const booth = new Booth({
-        adapter: 'hono',
+        adapter: 'web-standard',
         pricing: { '/route': 10 },
         upstream: 'http://localhost:9999',
         rootKey: ROOT_KEY,
         storage: memoryStorage(),
         redeemCashu: vi.fn().mockResolvedValue(1000),
+        getClientIp: () => '127.0.0.1',
       })
 
-      app.use('/route', booth.middleware as any)
-
-      const res = await app.request('/route', { method: 'POST' })
+      const middleware = booth.middleware as WebStandardHandler
+      const res = await middleware(new Request('http://localhost/route', { method: 'POST' }))
       expect(res.status).toBe(402)
       const body = await res.json()
       expect(body.payment_hash).toMatch(/^[0-9a-f]{64}$/)
@@ -918,16 +939,16 @@ describe('Booth', () => {
   })
 
   it('full flow: 402 -> payment page -> create invoice -> JSON status', async () => {
-    const { app, booth, backend, paymentHash, preimage } = setup()
+    const { request, booth, backend, preimage } = setup()
 
     // 1. Request a priced route, get 402
-    const res1 = await app.request('/route', { method: 'POST' })
+    const res1 = await request('/route', { method: 'POST' })
     expect(res1.status).toBe(402)
     const body1 = await res1.json()
     expect(body1.payment_url).toBeTruthy()
 
     // 2. Visit payment page (HTML)
-    const res2 = await app.request(body1.payment_url, {
+    const res2 = await request(body1.payment_url, {
       headers: { 'Accept': 'text/html' },
     })
     expect(res2.status).toBe(200)
@@ -935,7 +956,7 @@ describe('Booth', () => {
     expect(html).toContain('Payment Required')
 
     // 3. Create a Pro tier invoice
-    const res3 = await app.request('/create-invoice', {
+    const res3 = await request('/create-invoice', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ amountSats: 10_000 }),
@@ -943,7 +964,7 @@ describe('Booth', () => {
     expect(res3.status).toBe(200)
 
     // 4. Check JSON status
-    const res4 = await app.request(body1.payment_url)
+    const res4 = await request(body1.payment_url)
     expect(res4.status).toBe(200)
     const body4 = await res4.json()
     expect(body4.paid).toBe(false)
@@ -951,7 +972,7 @@ describe('Booth', () => {
     // 5. Simulate payment completion
     vi.mocked(backend.checkInvoice).mockResolvedValue({ paid: true, preimage })
 
-    const res5 = await app.request(body1.payment_url, {
+    const res5 = await request(body1.payment_url, {
       headers: { 'Accept': 'text/html' },
     })
     const html5 = await res5.text()

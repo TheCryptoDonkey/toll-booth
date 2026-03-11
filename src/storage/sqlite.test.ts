@@ -182,4 +182,17 @@ describe('sqliteStorage', () => {
     storage.settleWithCredit('hash1', 500)
     expect(storage.pendingClaims()).toHaveLength(0)
   })
+
+  it('prunes invoices older than maxAgeMs', () => {
+    storage = sqliteStorage()
+    storage.storeInvoice('h1', 'bolt11', 100, 'mac', 'tok1')
+    storage.storeInvoice('h2', 'bolt11', 200, 'mac', 'tok2')
+    // Both just created — pruning with 1 hour window should delete nothing
+    expect(storage.pruneExpiredInvoices(3_600_000)).toBe(0)
+    expect(storage.getInvoice('h1')).toBeDefined()
+    // Pruning with 0ms window should delete both
+    expect(storage.pruneExpiredInvoices(0)).toBe(2)
+    expect(storage.getInvoice('h1')).toBeUndefined()
+    expect(storage.getInvoice('h2')).toBeUndefined()
+  })
 })

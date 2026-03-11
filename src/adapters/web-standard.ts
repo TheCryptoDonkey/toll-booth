@@ -1,10 +1,14 @@
 // src/adapters/web-standard.ts
 import type { TollBoothEngine } from '../core/toll-booth.js'
 import type { CreateInvoiceDeps } from '../core/create-invoice.js'
-import type { CreateInvoiceRequest } from '../core/types.js'
+import type { CreateInvoiceRequest, NwcPayRequest, CashuRedeemRequest } from '../core/types.js'
 import type { InvoiceStatusDeps } from '../core/invoice-status.js'
 import { handleCreateInvoice } from '../core/create-invoice.js'
 import { handleInvoiceStatus, renderInvoiceStatusHtml } from '../core/invoice-status.js'
+import { handleNwcPay } from '../core/nwc-pay.js'
+import type { NwcPayDeps } from '../core/nwc-pay.js'
+import { handleCashuRedeem } from '../core/cashu-redeem.js'
+import type { CashuRedeemDeps } from '../core/cashu-redeem.js'
 import { PAYMENT_HASH_RE } from '../core/types.js'
 
 export type WebStandardHandler = (req: Request) => Promise<Response>
@@ -193,5 +197,46 @@ export function createWebStandardCreateInvoiceHandler(
       macaroon: d.macaroon,
       qr_svg: d.qrSvg,
     })
+  }
+}
+
+// -- NWC handler --------------------------------------------------------------
+
+/**
+ * Returns a `WebStandardHandler` that pays a Lightning invoice via NWC.
+ *
+ * Expects JSON body with `{ nwcUri, bolt11, paymentHash, statusToken }`.
+ * Returns the payment preimage on success.
+ */
+export function createWebStandardNwcHandler(deps: NwcPayDeps): WebStandardHandler {
+  return async (req: Request): Promise<Response> => {
+    const body = await req.json().catch(() => ({})) as NwcPayRequest
+    const result = await handleNwcPay(deps, body)
+    if (result.success) {
+      return Response.json({ preimage: result.preimage })
+    }
+    return Response.json({ error: result.error }, { status: result.status })
+  }
+}
+
+// -- Cashu handler ------------------------------------------------------------
+
+/**
+ * Returns a `WebStandardHandler` that redeems a Cashu token as payment.
+ *
+ * Expects JSON body with `{ token, paymentHash, statusToken }`.
+ * Uses durable write-ahead claims for crash-safe redemption.
+ */
+export function createWebStandardCashuHandler(deps: CashuRedeemDeps): WebStandardHandler {
+  return async (req: Request): Promise<Response> => {
+    const body = await req.json().catch(() => ({})) as CashuRedeemRequest
+    const result = await handleCashuRedeem(deps, body)
+    if (result.success) {
+      return Response.json({ credited: result.credited, token_suffix: result.tokenSuffix })
+    }
+    if ('state' in result) {
+      return Response.json({ state: result.state, retryAfterMs: result.retryAfterMs }, { status: 202 })
+    }
+    return Response.json({ error: result.error }, { status: result.status })
   }
 }

@@ -154,6 +154,11 @@ export function sqliteStorage(config?: SqliteStorageConfig): StorageBackend {
     'SELECT payment_hash, token, claimed_at FROM claims WHERE payment_hash = ?'
   )
 
+  const stmtPruneInvoices = db.prepare(`
+    DELETE FROM invoices
+    WHERE datetime(created_at) <= datetime('now', '-' || ? || ' seconds')
+  `)
+
   const txnClaimForRedeem = db.transaction((paymentHash: string, token: string, leaseExpiresAt: string) => {
     // Reject if already settled
     if (stmtIsSettled.get(paymentHash)) return false
@@ -301,6 +306,12 @@ export function sqliteStorage(config?: SqliteStorageConfig): StorageBackend {
         macaroon: row.macaroon,
         createdAt: row.created_at,
       }
+    },
+
+    pruneExpiredInvoices(maxAgeMs: number): number {
+      const maxAgeSecs = Math.floor(maxAgeMs / 1000)
+      const result = stmtPruneInvoices.run(maxAgeSecs)
+      return result.changes
     },
 
     close(): void {

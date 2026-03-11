@@ -60,3 +60,25 @@ export interface InvoiceStatusResult {
   tokenSuffix?: string
   invoice?: StoredInvoice
 }
+
+export interface NwcPayRequest {
+  nwcUri: string
+  bolt11: string
+  paymentHash: string
+  statusToken: string
+}
+
+export type NwcPayResult =
+  | { success: true; preimage: string }
+  | { success: false; error: string; status: 400 | 500 }
+
+export interface CashuRedeemRequest {
+  token: string
+  paymentHash: string
+  statusToken: string
+}
+
+export type CashuRedeemResult =
+  | { success: true; credited: number; tokenSuffix: string }
+  | { success: false; state: 'pending'; retryAfterMs: number }
+  | { success: false; error: string; status: 400 | 500 }

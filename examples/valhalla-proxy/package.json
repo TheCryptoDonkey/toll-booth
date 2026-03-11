@@ -9,10 +9,12 @@
   },
   "dependencies": {
     "toll-booth": "file:../../",
-    "@hono/node-server": "^1.13.0",
-    "hono": "^4.7.0"
+    "express": "^5.2.1",
+    "cors": "^2.8.5"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.6",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0"
   }

@@ -4,10 +4,10 @@
 // Skipped by default — run via: npm run test:integration --cashu-only
 //
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { Hono } from 'hono'
 import { Mint, Wallet, MintQuoteState, getEncodedTokenV4, type Proof } from '@cashu/cashu-ts'
 import { Booth } from '../booth.js'
 import { memoryStorage } from '../storage/memory.js'
+import type { WebStandardHandler } from '../adapters/web-standard.js'
 
 const MINT_URL = process.env.CASHU_MINT_URL ?? 'http://localhost:13338'
 const RUN_INTEGRATION = process.env.RUN_INTEGRATION === 'true'
@@ -36,7 +36,7 @@ async function mintProofs(wallet: Wallet, amount: number): Promise<Proof[]> {
 describe.skipIf(!RUN_INTEGRATION)('Cashu-only mode integration (requires Nutshell)', () => {
   let wallet: Wallet
   let booth: Booth
-  let app: Hono
+  let request: (input: string | URL, init?: RequestInit) => Promise<Response>
 
   beforeAll(async () => {
     // Initialise Cashu wallet
@@ -51,7 +51,7 @@ describe.skipIf(!RUN_INTEGRATION)('Cashu-only mode integration (requires Nutshel
     }
 
     booth = new Booth({
-      adapter: 'hono',
+      adapter: 'web-standard',
       // No backend — Cashu-only mode
       pricing: { '/api/data': 5 },
       upstream: 'http://localhost:1', // Not used — we test auth, not proxying
@@ -59,13 +59,23 @@ describe.skipIf(!RUN_INTEGRATION)('Cashu-only mode integration (requires Nutshel
       storage: memoryStorage(),
       defaultInvoiceAmount: 100,
       redeemCashu,
+      getClientIp: () => '127.0.0.1',
     })
 
-    app = new Hono()
-    app.get('/invoice-status/:paymentHash', booth.invoiceStatusHandler as any)
-    app.post('/create-invoice', booth.createInvoiceHandler as any)
-    app.post('/cashu-redeem', booth.cashuRedeemHandler as any)
-    app.use('/*', booth.middleware as any)
+    const middleware = booth.middleware as WebStandardHandler
+    const invoiceStatusHandler = booth.invoiceStatusHandler as WebStandardHandler
+    const createInvoiceHandler = booth.createInvoiceHandler as WebStandardHandler
+    const cashuRedeemHandler = booth.cashuRedeemHandler as WebStandardHandler
+
+    request = async (input: string | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(input, 'http://localhost')
+      const req = new Request(url, init)
+      const path = url.pathname
+      if (path.startsWith('/invoice-status/')) return invoiceStatusHandler(req)
+      if (path === '/create-invoice') return createInvoiceHandler(req)
+      if (path === '/cashu-redeem') return cashuRedeemHandler(req)
+      return middleware(req)
+    }
   }, 30_000)
 
   afterAll(() => {
@@ -73,7 +83,7 @@ describe.skipIf(!RUN_INTEGRATION)('Cashu-only mode integration (requires Nutshel
   })
 
   it('402 challenge has no bolt11 invoice', async () => {
-    const res = await app.request('/api/data')
+    const res = await request('/api/data')
     expect(res.status).toBe(402)
 
     const body = await res.json() as Record<string, unknown>
@@ -84,7 +94,7 @@ describe.skipIf(!RUN_INTEGRATION)('Cashu-only mode integration (requires Nutshel
 
   it('full Cashu-only flow: 402 → mint tokens → redeem → authorise', async () => {
     // 1. Trigger a 402 to get a payment hash + macaroon
-    const challengeRes = await app.request('/api/data')
+    const challengeRes = await request('/api/data')
     expect(challengeRes.status).toBe(402)
     const challenge = await challengeRes.json() as {
       payment_hash: string
@@ -101,7 +111,7 @@ describe.skipIf(!RUN_INTEGRATION)('Cashu-only mode integration (requires Nutshel
 
     // 3. Encode as Cashu token and redeem
     const token = getEncodedTokenV4({ proofs, mint: MINT_URL })
-    const redeemRes = await app.request('/cashu-redeem', {
+    const redeemRes = await request('/cashu-redeem', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token, paymentHash: challenge.payment_hash, statusToken }),
@@ -114,7 +124,7 @@ describe.skipIf(!RUN_INTEGRATION)('Cashu-only mode integration (requires Nutshel
     expect(redeemBody.token_suffix).toBeTruthy()
 
     // 4. Use macaroon to access gated endpoint
-    const authedRes = await app.request('/api/data', {
+    const authedRes = await request('/api/data', {
       headers: { Authorization: `L402 ${challenge.macaroon}:${redeemBody.token_suffix}` },
     })
 
@@ -124,7 +134,7 @@ describe.skipIf(!RUN_INTEGRATION)('Cashu-only mode integration (requires Nutshel
 
   it('invoice-status reflects settlement without Lightning backend', async () => {
     // 1. Get a challenge
-    const challengeRes = await app.request('/api/data')
+    const challengeRes = await request('/api/data')
     const challenge = await challengeRes.json() as {
       payment_hash: string
       amount_sats: number
@@ -133,7 +143,7 @@ describe.skipIf(!RUN_INTEGRATION)('Cashu-only mode integration (requires Nutshel
     const statusToken = extractStatusToken(challenge.payment_url)
 
     // 2. Check status before payment — should be unpaid
-    const statusBefore = await app.request(challenge.payment_url)
+    const statusBefore = await request(challenge.payment_url)
     expect(statusBefore.status).toBe(200)
     const bodyBefore = await statusBefore.json() as { paid: boolean }
     expect(bodyBefore.paid).toBe(false)
@@ -141,14 +151,14 @@ describe.skipIf(!RUN_INTEGRATION)('Cashu-only mode integration (requires Nutshel
     // 3. Pay via Cashu
     const proofs = await mintProofs(wallet, challenge.amount_sats)
     const token = getEncodedTokenV4({ proofs, mint: MINT_URL })
-    await app.request('/cashu-redeem', {
+    await request('/cashu-redeem', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token, paymentHash: challenge.payment_hash, statusToken }),
     })
 
     // 4. Check status after payment — should be paid
-    const statusAfter = await app.request(challenge.payment_url)
+    const statusAfter = await request(challenge.payment_url)
     expect(statusAfter.status).toBe(200)
     const bodyAfter = await statusAfter.json() as { paid: boolean }
     expect(bodyAfter.paid).toBe(true)

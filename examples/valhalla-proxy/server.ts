@@ -1,11 +1,10 @@
 // examples/valhalla-proxy/server.ts
-import { serve } from '@hono/node-server'
-import { Hono } from 'hono'
-import { cors } from 'hono/cors'
+import express from 'express'
+import cors from 'cors'
 import { Booth } from 'toll-booth'
 import { phoenixdBackend } from 'toll-booth/backends/phoenixd'
 
-const app = new Hono()
+const app = express()
 const trustProxy = (process.env.TRUST_PROXY ?? 'false') === 'true'
 
 const backend = phoenixdBackend({
@@ -13,13 +12,15 @@ const backend = phoenixdBackend({
   password: process.env.PHOENIXD_PASSWORD ?? '',
 })
 
-app.use('/*', cors({
+app.use(cors({
   origin: '*',
-  exposeHeaders: ['WWW-Authenticate', 'X-Coverage', 'X-Credit-Balance', 'X-Free-Remaining'],
+  exposedHeaders: ['WWW-Authenticate', 'X-Coverage', 'X-Credit-Balance', 'X-Free-Remaining'],
 }))
 
+app.use(express.json())
+
 const booth = new Booth({
-  adapter: 'hono',
+  adapter: 'express',
   backend,
   pricing: {
     '/route': 2,
@@ -61,7 +62,7 @@ const freeTierTimer = setInterval(() => {
 }, 86_400_000)
 
 const port = parseInt(process.env.PORT ?? '3000', 10)
-const server = serve({ fetch: app.fetch, port }, () => {
+const server = app.listen(port, () => {
   console.log(`routing proxy listening on :${port}`)
 })
 

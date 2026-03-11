@@ -123,6 +123,18 @@ export function memoryStorage(): StorageBackend {
       return toStoredInvoice(invoice)
     },
 
+    pruneExpiredInvoices(maxAgeMs: number): number {
+      const cutoff = new Date(Date.now() - maxAgeMs).toISOString()
+      let pruned = 0
+      for (const [hash, inv] of invoices) {
+        if (inv.createdAt < cutoff) {
+          invoices.delete(hash)
+          pruned++
+        }
+      }
+      return pruned
+    },
+
     close(): void {
       balances.clear()
       invoices.clear()

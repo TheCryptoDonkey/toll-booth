@@ -1,6 +1,6 @@
 # CLAUDE.md — toll-booth
 
-L402 middleware — gates any Hono HTTP API behind Lightning payments. Drop-in, one function call.
+L402 middleware — gates any HTTP API behind Lightning payments. Supports Express and Web Standard (Deno, Bun, Cloudflare Workers).
 
 ## Commands
 
@@ -81,4 +81,4 @@ examples/
 - **ESM-only** — `"type": "module"`, target ES2022, module Node16
 - **Git:** commit messages use `type: description` format
 - **Git:** Do NOT include `Co-Authored-By` lines in commits
-- **Zero TROTT deps** — standalone library (hono, better-sqlite3, macaroon)
+- **Zero TROTT deps** — standalone library (better-sqlite3, macaroon)

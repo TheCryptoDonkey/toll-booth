@@ -132,7 +132,7 @@ export interface BoothConfig {
 
   /**
    * Custom callback to resolve the client IP for adapters that cannot infer
-   * it directly (for example Hono or generic Web Standard runtimes).
+   * it directly (for example Deno, Bun, or Cloudflare Workers).
    * The callback receives the adapter-specific request object.
    */
   getClientIp?: (request: unknown) => string
@@ -168,6 +168,13 @@ export interface BoothConfig {
    * Defaults to 30000 (30 seconds).
    */
   upstreamTimeout?: number
+
+  /**
+   * Maximum age of stored invoices in milliseconds. Invoices older than
+   * this are periodically pruned. Set to 0 to disable pruning.
+   * Default: 86400000 (24 hours).
+   */
+  invoiceMaxAgeMs?: number
 }
 
 /**

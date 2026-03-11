@@ -4,11 +4,11 @@
 // Skipped by default — run via: npm run test:integration
 //
 import { describe, it, expect, afterAll } from 'vitest'
-import { Hono } from 'hono'
-import { serve } from '@hono/node-server'
+import http from 'node:http'
 import { Booth } from '../booth.js'
 import { lndBackend } from '../backends/lnd.js'
 import { memoryStorage } from '../storage/memory.js'
+import type { WebStandardHandler } from '../adapters/web-standard.js'
 
 const aliceUrl = process.env.LND_REST_URL
 const aliceMacaroon = process.env.LND_MACAROON
@@ -17,35 +17,45 @@ const bobMacaroon = process.env.LND_BOB_MACAROON
 const hasCredentials = !!aliceUrl && !!aliceMacaroon && !!bobUrl && !!bobMacaroon
 
 describe.skipIf(!hasCredentials)('L402 end-to-end flow', () => {
-  // Upstream: a trivial Hono app that always returns 200
-  const upstream = new Hono()
-  upstream.all('/*', (c) => c.json({ ok: true, path: new URL(c.req.url).pathname }))
-
-  let upstreamServer: ReturnType<typeof serve>
+  // Upstream: a trivial HTTP server that always returns 200
+  let upstreamServer: http.Server
   let upstreamPort: number
   let booth: Booth
-  let app: Hono
+  let request: (input: string | URL, init?: RequestInit) => Promise<Response>
 
   const setup = () => {
     upstreamPort = 19000 + Math.floor(Math.random() * 1000)
-    upstreamServer = serve({ fetch: upstream.fetch, port: upstreamPort })
+    upstreamServer = http.createServer((_req, res) => {
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ ok: true, path: _req.url }))
+    })
+    upstreamServer.listen(upstreamPort)
 
     const backend = lndBackend({ url: aliceUrl!, macaroon: aliceMacaroon! })
 
     booth = new Booth({
-      adapter: 'hono',
+      adapter: 'web-standard',
       backend,
       pricing: { '/api/route': 10 },
       upstream: `http://127.0.0.1:${upstreamPort}`,
       rootKey: 'b'.repeat(64),
       storage: memoryStorage(),
       defaultInvoiceAmount: 1000,
+      getClientIp: () => '127.0.0.1',
     })
 
-    app = new Hono()
-    app.get('/invoice-status/:paymentHash', booth.invoiceStatusHandler as any)
-    app.post('/create-invoice', booth.createInvoiceHandler as any)
-    app.use('/*', booth.middleware as any)
+    const middleware = booth.middleware as WebStandardHandler
+    const invoiceStatusHandler = booth.invoiceStatusHandler as WebStandardHandler
+    const createInvoiceHandler = booth.createInvoiceHandler as WebStandardHandler
+
+    request = async (input: string | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(input, 'http://localhost')
+      const req = new Request(url, init)
+      const path = url.pathname
+      if (path.startsWith('/invoice-status/')) return invoiceStatusHandler(req)
+      if (path === '/create-invoice') return createInvoiceHandler(req)
+      return middleware(req)
+    }
   }
 
   afterAll(() => {
@@ -57,7 +67,7 @@ describe.skipIf(!hasCredentials)('L402 end-to-end flow', () => {
     setup()
 
     // 1. Request priced endpoint — get 402
-    const challengeRes = await app.request('/api/route')
+    const challengeRes = await request('/api/route')
     expect(challengeRes.status).toBe(402)
 
     const challenge = await challengeRes.json() as {
@@ -90,7 +100,7 @@ describe.skipIf(!hasCredentials)('L402 end-to-end flow', () => {
     const preimage = Buffer.from(payData.payment_preimage, 'base64').toString('hex')
 
     // 3. Request with L402 header — should be authorised and proxied
-    const authedRes = await app.request('/api/route', {
+    const authedRes = await request('/api/route', {
       headers: { Authorization: `L402 ${challenge.macaroon}:${preimage}` },
     })
 
@@ -108,7 +118,7 @@ describe.skipIf(!hasCredentials)('L402 end-to-end flow', () => {
   it('subsequent requests deduct from credit balance', async () => {
     // Uses state from previous test — same booth instance.
     // Need a fresh invoice since the previous one is already settled.
-    const challengeRes = await app.request('/api/route')
+    const challengeRes = await request('/api/route')
     expect(challengeRes.status).toBe(402)
 
     const challenge = await challengeRes.json() as {
@@ -129,14 +139,14 @@ describe.skipIf(!hasCredentials)('L402 end-to-end flow', () => {
     const preimage = Buffer.from(payData.payment_preimage, 'base64').toString('hex')
 
     // First request: 1000 - 10 = 990
-    const r1 = await app.request('/api/route', {
+    const r1 = await request('/api/route', {
       headers: { Authorization: `L402 ${challenge.macaroon}:${preimage}` },
     })
     expect(r1.status).toBe(200)
     expect(Number(r1.headers.get('X-Credit-Balance'))).toBe(990)
 
     // Second request: 990 - 10 = 980
-    const r2 = await app.request('/api/route', {
+    const r2 = await request('/api/route', {
       headers: { Authorization: `L402 ${challenge.macaroon}:${preimage}` },
     })
     expect(r2.status).toBe(200)

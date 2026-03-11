@@ -4,11 +4,11 @@
 // Skipped by default — run via: npm run test:integration --cashu-only
 //
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { Hono } from 'hono'
 import { Mint, Wallet, MintQuoteState, getEncodedTokenV4, type Proof } from '@cashu/cashu-ts'
 import { Booth } from '../booth.js'
 import { memoryStorage } from '../storage/memory.js'
 import type { LightningBackend } from '../types.js'
+import type { WebStandardHandler } from '../adapters/web-standard.js'
 import { createHash, randomBytes } from 'node:crypto'
 
 const MINT_URL = process.env.CASHU_MINT_URL ?? 'http://localhost:13338'
@@ -38,7 +38,7 @@ async function mintProofs(wallet: Wallet, amount: number): Promise<Proof[]> {
 describe.skipIf(!RUN_INTEGRATION)('Cashu redemption integration (requires Nutshell)', () => {
   let wallet: Wallet
   let booth: Booth
-  let app: Hono
+  let request: (input: string | URL, init?: RequestInit) => Promise<Response>
 
   // Fake Lightning backend — Cashu tests don't need real Lightning
   const fakeBackend: LightningBackend = {
@@ -67,7 +67,7 @@ describe.skipIf(!RUN_INTEGRATION)('Cashu redemption integration (requires Nutshe
     }
 
     booth = new Booth({
-      adapter: 'hono',
+      adapter: 'web-standard',
       backend: fakeBackend,
       pricing: { '/api/data': 5 },
       upstream: 'http://localhost:1', // Not used — Cashu tests don't proxy
@@ -75,13 +75,23 @@ describe.skipIf(!RUN_INTEGRATION)('Cashu redemption integration (requires Nutshe
       storage: memoryStorage(),
       defaultInvoiceAmount: 100,
       redeemCashu,
+      getClientIp: () => '127.0.0.1',
     })
 
-    app = new Hono()
-    app.get('/invoice-status/:paymentHash', booth.invoiceStatusHandler as any)
-    app.post('/create-invoice', booth.createInvoiceHandler as any)
-    app.post('/cashu-redeem', booth.cashuRedeemHandler as any)
-    app.use('/*', booth.middleware as any)
+    const middleware = booth.middleware as WebStandardHandler
+    const invoiceStatusHandler = booth.invoiceStatusHandler as WebStandardHandler
+    const createInvoiceHandler = booth.createInvoiceHandler as WebStandardHandler
+    const cashuRedeemHandler = booth.cashuRedeemHandler as WebStandardHandler
+
+    request = async (input: string | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(input, 'http://localhost')
+      const req = new Request(url, init)
+      const path = url.pathname
+      if (path.startsWith('/invoice-status/')) return invoiceStatusHandler(req)
+      if (path === '/create-invoice') return createInvoiceHandler(req)
+      if (path === '/cashu-redeem') return cashuRedeemHandler(req)
+      return middleware(req)
+    }
   }, 30_000)
 
   afterAll(() => {
@@ -90,7 +100,7 @@ describe.skipIf(!RUN_INTEGRATION)('Cashu redemption integration (requires Nutshe
 
   it('redeems Cashu token and credits the payment hash', async () => {
     // 1. Trigger a 402 to get a payment hash + macaroon
-    const challengeRes = await app.request('/api/data')
+    const challengeRes = await request('/api/data')
     expect(challengeRes.status).toBe(402)
     const challenge = await challengeRes.json() as {
       payment_hash: string
@@ -109,7 +119,7 @@ describe.skipIf(!RUN_INTEGRATION)('Cashu redemption integration (requires Nutshe
     const token = getEncodedTokenV4({ proofs, mint: MINT_URL })
 
     // 4. Redeem through the Booth's handler
-    const redeemRes = await app.request('/cashu-redeem', {
+    const redeemRes = await request('/cashu-redeem', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token, paymentHash: challenge.payment_hash, statusToken }),
@@ -124,7 +134,7 @@ describe.skipIf(!RUN_INTEGRATION)('Cashu redemption integration (requires Nutshe
 
   it('idempotent: second redemption returns credited=0', async () => {
     // Trigger a 402
-    const challengeRes = await app.request('/api/data')
+    const challengeRes = await request('/api/data')
     const challenge = await challengeRes.json() as {
       payment_hash: string
       macaroon: string
@@ -137,14 +147,14 @@ describe.skipIf(!RUN_INTEGRATION)('Cashu redemption integration (requires Nutshe
     const proofs = await mintProofs(wallet, challenge.amount_sats)
     const token = getEncodedTokenV4({ proofs, mint: MINT_URL })
 
-    await app.request('/cashu-redeem', {
+    await request('/cashu-redeem', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token, paymentHash: challenge.payment_hash, statusToken }),
     })
 
     // Second redemption — already settled
-    const res2 = await app.request('/cashu-redeem', {
+    const res2 = await request('/cashu-redeem', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token: 'cashuA_stale', paymentHash: challenge.payment_hash, statusToken }),
@@ -157,7 +167,7 @@ describe.skipIf(!RUN_INTEGRATION)('Cashu redemption integration (requires Nutshe
 
   it('Cashu-paid macaroon authorises access via L402 header', async () => {
     // Trigger a 402
-    const challengeRes = await app.request('/api/data')
+    const challengeRes = await request('/api/data')
     const challenge = await challengeRes.json() as {
       payment_hash: string
       macaroon: string
@@ -170,7 +180,7 @@ describe.skipIf(!RUN_INTEGRATION)('Cashu redemption integration (requires Nutshe
     const proofs = await mintProofs(wallet, challenge.amount_sats)
     const token = getEncodedTokenV4({ proofs, mint: MINT_URL })
 
-    const redeemRes = await app.request('/cashu-redeem', {
+    const redeemRes = await request('/cashu-redeem', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token, paymentHash: challenge.payment_hash, statusToken }),
@@ -178,7 +188,7 @@ describe.skipIf(!RUN_INTEGRATION)('Cashu redemption integration (requires Nutshe
     const redeemBody = await redeemRes.json() as { token_suffix: string }
 
     // Use macaroon with settlement token suffix from redemption response
-    const authedRes = await app.request('/api/data', {
+    const authedRes = await request('/api/data', {
       headers: { Authorization: `L402 ${challenge.macaroon}:${redeemBody.token_suffix}` },
     })
 

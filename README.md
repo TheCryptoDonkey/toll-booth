@@ -6,14 +6,14 @@
 Embeddable [L402](https://docs.lightning.engineering/the-lightning-network/l402) middleware for JavaScript. Gate any HTTP API behind Lightning payments — no separate proxy, no LND required.
 
 ```ts
-import { Hono } from 'hono'
+import express from 'express'
 import { Booth } from 'toll-booth'
 import { phoenixdBackend } from 'toll-booth/backends/phoenixd'
 
-const app = new Hono()
+const app = express()
 
 const booth = new Booth({
-  adapter: 'hono',
+  adapter: 'express',
   backend: phoenixdBackend({ url: 'http://localhost:9740', password: 'your-password' }),
   pricing: {
     '/api/route': 2,        // must match the mounted paths the middleware sees
@@ -28,7 +28,9 @@ const booth = new Booth({
   strictPricing: true, // reject unpriced routes with 402 instead of passing them through
 })
 
-app.use('/api/*', booth.middleware)
+app.get('/invoice-status/:paymentHash', booth.invoiceStatusHandler as any)
+app.post('/create-invoice', booth.createInvoiceHandler as any)
+app.use('/api/*', booth.middleware as any)
 ```
 
 ## Why not Aperture?
@@ -42,7 +44,7 @@ toll-booth exists for the cases where Aperture doesn't fit:
 | **Language** | Go binary | TypeScript middleware |
 | **Deployment** | Standalone reverse proxy | Embeds in your existing app |
 | **Lightning node** | Requires LND | Phoenixd, LND, or CLN |
-| **Serverless** | No — long-running process | Yes — runs on Cloudflare Workers, Deno, Bun |
+| **Serverless** | No — long-running process | Yes — Web Standard adapter runs on Cloudflare Workers, Deno, Bun |
 | **Configuration** | YAML file | Programmatic (code) |
 | **Maturity** | Production (powers Lightning Loop) | Stable |
 
