@@ -1,11 +1,13 @@
 // src/storage/memory.ts
 import type { StorageBackend, DebitResult, StoredInvoice, PendingClaim } from './interface.js'
 
+const DEFAULT_LEASE_MS = 30_000
+
 export function memoryStorage(): StorageBackend {
   const balances = new Map<string, number>()
   const invoices = new Map<string, StoredInvoice>()
   const settled = new Set<string>()
-  const claims = new Map<string, { token: string; claimedAt: string }>()
+  const claims = new Map<string, { token: string; claimedAt: string; leaseExpiresAt: number }>()
 
   return {
     credit(paymentHash: string, amount: number): void {
@@ -46,22 +48,31 @@ export function memoryStorage(): StorageBackend {
       return true
     },
 
-    claimForRedeem(paymentHash: string, token: string): boolean {
+    claimForRedeem(paymentHash: string, token: string, leaseMs?: number): boolean {
       if (settled.has(paymentHash) || claims.has(paymentHash)) return false
-      claims.set(paymentHash, { token, claimedAt: new Date().toISOString() })
+      claims.set(paymentHash, {
+        token,
+        claimedAt: new Date().toISOString(),
+        leaseExpiresAt: Date.now() + (leaseMs ?? DEFAULT_LEASE_MS),
+      })
       return true
     },
 
     pendingClaims(): PendingClaim[] {
-      return Array.from(claims.entries()).map(([paymentHash, { token, claimedAt }]) => ({
-        paymentHash, token, claimedAt,
-      }))
+      return Array.from(claims.entries())
+        .filter(([paymentHash]) => !settled.has(paymentHash))
+        .map(([paymentHash, { token, claimedAt }]) => ({
+          paymentHash, token, claimedAt,
+        }))
     },
 
-    getPendingClaim(paymentHash: string): PendingClaim | undefined {
+    tryAcquireRecoveryLease(paymentHash: string, leaseMs: number): PendingClaim | undefined {
       if (settled.has(paymentHash)) return undefined
       const claim = claims.get(paymentHash)
       if (!claim) return undefined
+      if (Date.now() < claim.leaseExpiresAt) return undefined
+      // Lease expired — acquire it
+      claim.leaseExpiresAt = Date.now() + leaseMs
       return { paymentHash, token: claim.token, claimedAt: claim.claimedAt }
     },
 

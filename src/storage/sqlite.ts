@@ -2,6 +2,8 @@
 import Database from 'better-sqlite3'
 import type { StorageBackend, DebitResult, StoredInvoice, PendingClaim } from './interface.js'
 
+const DEFAULT_LEASE_MS = 30_000
+
 export interface SqliteStorageConfig {
   path?: string
 }
@@ -40,9 +42,17 @@ export function sqliteStorage(config?: SqliteStorageConfig): StorageBackend {
     CREATE TABLE IF NOT EXISTS claims (
       payment_hash TEXT PRIMARY KEY,
       token TEXT NOT NULL,
-      claimed_at TEXT NOT NULL DEFAULT (datetime('now'))
+      claimed_at TEXT NOT NULL DEFAULT (datetime('now')),
+      lease_expires_at TEXT
     )
   `)
+
+  // Migration: add lease_expires_at column if upgrading from older schema
+  try {
+    db.exec('ALTER TABLE claims ADD COLUMN lease_expires_at TEXT')
+  } catch {
+    // Column already exists — ignore
+  }
 
   const stmtCredit = db.prepare(`
     INSERT INTO credits (payment_hash, balance)
@@ -79,7 +89,7 @@ export function sqliteStorage(config?: SqliteStorageConfig): StorageBackend {
   )
 
   const stmtClaim = db.prepare(
-    'INSERT OR IGNORE INTO claims (payment_hash, token) VALUES (?, ?)'
+    'INSERT OR IGNORE INTO claims (payment_hash, token, lease_expires_at) VALUES (?, ?, ?)'
   )
 
   const stmtPendingClaims = db.prepare(`
@@ -93,18 +103,23 @@ export function sqliteStorage(config?: SqliteStorageConfig): StorageBackend {
     'DELETE FROM claims WHERE payment_hash = ?'
   )
 
-  const stmtGetPendingClaim = db.prepare(`
-    SELECT c.payment_hash, c.token, c.claimed_at
-    FROM claims c
-    LEFT JOIN settlements s ON c.payment_hash = s.payment_hash
-    WHERE c.payment_hash = ? AND s.payment_hash IS NULL
+  const stmtTryAcquireRecoveryLease = db.prepare(`
+    UPDATE claims
+    SET lease_expires_at = ?
+    WHERE payment_hash = ?
+      AND (lease_expires_at IS NULL OR lease_expires_at < datetime('now'))
+      AND payment_hash NOT IN (SELECT payment_hash FROM settlements)
   `)
 
-  const txnClaimForRedeem = db.transaction((paymentHash: string, token: string) => {
+  const stmtGetClaim = db.prepare(
+    'SELECT payment_hash, token, claimed_at FROM claims WHERE payment_hash = ?'
+  )
+
+  const txnClaimForRedeem = db.transaction((paymentHash: string, token: string, leaseExpiresAt: string) => {
     // Reject if already settled
     if (stmtIsSettled.get(paymentHash)) return false
     // Try to claim (INSERT OR IGNORE — fails silently if already claimed)
-    const r = stmtClaim.run(paymentHash, token)
+    const r = stmtClaim.run(paymentHash, token, leaseExpiresAt)
     return r.changes > 0
   })
 
@@ -116,6 +131,22 @@ export function sqliteStorage(config?: SqliteStorageConfig): StorageBackend {
       return true
     }
     return false
+  })
+
+  const txnTryAcquireRecoveryLease = db.transaction((paymentHash: string, leaseExpiresAt: string): PendingClaim | undefined => {
+    const r = stmtTryAcquireRecoveryLease.run(leaseExpiresAt, paymentHash)
+    if (r.changes === 0) return undefined
+    const row = stmtGetClaim.get(paymentHash) as {
+      payment_hash: string
+      token: string
+      claimed_at: string
+    } | undefined
+    if (!row) return undefined
+    return {
+      paymentHash: row.payment_hash,
+      token: row.token,
+      claimedAt: row.claimed_at,
+    }
   })
 
   const txnDebit = db.transaction((paymentHash: string, amount: number): DebitResult => {
@@ -158,8 +189,10 @@ export function sqliteStorage(config?: SqliteStorageConfig): StorageBackend {
       return txnSettleWithCredit(paymentHash, amount)
     },
 
-    claimForRedeem(paymentHash: string, token: string): boolean {
-      return txnClaimForRedeem(paymentHash, token)
+    claimForRedeem(paymentHash: string, token: string, leaseMs?: number): boolean {
+      const ms = leaseMs ?? DEFAULT_LEASE_MS
+      const leaseExpiresAt = new Date(Date.now() + ms).toISOString()
+      return txnClaimForRedeem(paymentHash, token, leaseExpiresAt)
     },
 
     pendingClaims(): PendingClaim[] {
@@ -175,18 +208,9 @@ export function sqliteStorage(config?: SqliteStorageConfig): StorageBackend {
       }))
     },
 
-    getPendingClaim(paymentHash: string): PendingClaim | undefined {
-      const row = stmtGetPendingClaim.get(paymentHash) as {
-        payment_hash: string
-        token: string
-        claimed_at: string
-      } | undefined
-      if (!row) return undefined
-      return {
-        paymentHash: row.payment_hash,
-        token: row.token,
-        claimedAt: row.claimed_at,
-      }
+    tryAcquireRecoveryLease(paymentHash: string, leaseMs: number): PendingClaim | undefined {
+      const leaseExpiresAt = new Date(Date.now() + leaseMs).toISOString()
+      return txnTryAcquireRecoveryLease(paymentHash, leaseExpiresAt)
     },
 
     storeInvoice(paymentHash: string, bolt11: string, amountSats: number, macaroon: string): void {

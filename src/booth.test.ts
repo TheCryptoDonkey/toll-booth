@@ -259,7 +259,7 @@ describe('Booth', () => {
       booth.close()
     })
 
-    it('concurrent Cashu redemptions: only one wins the claim', async () => {
+    it('concurrent Cashu redemptions: only one wins, other gets 202', async () => {
       const redeemCashu = vi.fn().mockResolvedValue(500)
       const { app, booth, paymentHash } = setup({ redeemCashu })
 
@@ -272,21 +272,23 @@ describe('Booth', () => {
         body: JSON.stringify({ token: 'cashuA...', paymentHash }),
       })
 
-      // Fire two concurrent requests — only one wins claimForRedeem
+      // Fire two concurrent requests — only one wins claimForRedeem,
+      // the other gets 202 (lease held, cannot recover yet)
       const [r1, r2] = await Promise.all([
         app.request('/cashu-redeem', makeOpts()),
         app.request('/cashu-redeem', makeOpts()),
       ])
 
-      expect(r1.status).toBe(200)
-      expect(r2.status).toBe(200)
+      const statuses = [r1.status, r2.status].sort()
+      expect(statuses).toEqual([200, 202])
 
-      const [b1, b2] = await Promise.all([r1.json(), r2.json()])
+      // Only one call to the external Cashu mint
+      expect(redeemCashu).toHaveBeenCalledTimes(1)
 
-      // Both requests may call redeem (claim winner + request-triggered recovery),
-      // but settleWithCredit is atomic — only one credits the balance.
-      const credits = [b1.credited, b2.credited].sort()
-      expect(credits).toEqual([0, 500])
+      // The 200 response has the credited amount
+      const winner = r1.status === 200 ? r1 : r2
+      const winnerBody = await winner.json()
+      expect(winnerBody.credited).toBe(500)
 
       booth.close()
     })
@@ -444,64 +446,125 @@ describe('Booth', () => {
       booth.close()
     })
 
-    it('client retry recovers a pending claim without restart', async () => {
-      const redeemCashu = vi.fn()
-        .mockRejectedValueOnce(new Error('ECONNREFUSED'))
-        .mockResolvedValueOnce(500)
-      const { app, booth, paymentHash } = setup({ redeemCashu })
+    it('client retry recovers a pending claim after lease expires', async () => {
+      vi.useFakeTimers()
+      try {
+        const redeemCashu = vi.fn()
+          .mockRejectedValueOnce(new Error('ECONNREFUSED'))
+          .mockResolvedValueOnce(500)
+        const { app, booth, paymentHash } = setup({ redeemCashu })
 
-      // Store the invoice
-      await app.request('/route', { method: 'POST' })
+        // Store the invoice
+        await app.request('/route', { method: 'POST' })
 
-      // First attempt — mint fails, claim is pending
-      const res1 = await app.request('/cashu-redeem', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: 'cashuA...', paymentHash }),
-      })
-      expect(res1.status).toBe(202)
+        // First attempt — mint fails, claim is pending with active lease
+        const res1 = await app.request('/cashu-redeem', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: 'cashuA...', paymentHash }),
+        })
+        expect(res1.status).toBe(202)
 
-      // Second attempt — mint succeeds via request-triggered recovery
-      const res2 = await app.request('/cashu-redeem', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: 'cashuA...', paymentHash }),
-      })
-      expect(res2.status).toBe(200)
-      const body2 = await res2.json()
-      expect(body2.credited).toBe(500)
-      expect(body2.macaroon).toBeTruthy()
-      expect(redeemCashu).toHaveBeenCalledTimes(2)
+        // Advance past lease expiry (30s default)
+        vi.advanceTimersByTime(31_000)
 
-      booth.close()
+        // Second attempt — lease expired, recovery succeeds
+        const res2 = await app.request('/cashu-redeem', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: 'cashuA...', paymentHash }),
+        })
+        expect(res2.status).toBe(200)
+        const body2 = await res2.json()
+        expect(body2.credited).toBe(500)
+        expect(body2.macaroon).toBeTruthy()
+        expect(redeemCashu).toHaveBeenCalledTimes(2)
+
+        booth.close()
+      } finally {
+        vi.useRealTimers()
+      }
     })
 
     it('returns 202 on retry when recovery also fails', async () => {
-      const redeemCashu = vi.fn().mockRejectedValue(new Error('ECONNREFUSED'))
-      const { app, booth, paymentHash } = setup({ redeemCashu })
+      vi.useFakeTimers()
+      try {
+        const redeemCashu = vi.fn().mockRejectedValue(new Error('ECONNREFUSED'))
+        const { app, booth, paymentHash } = setup({ redeemCashu })
 
-      // Store the invoice
-      await app.request('/route', { method: 'POST' })
+        // Store the invoice
+        await app.request('/route', { method: 'POST' })
 
-      // First attempt — fails
-      const res1 = await app.request('/cashu-redeem', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: 'cashuA...', paymentHash }),
-      })
-      expect(res1.status).toBe(202)
+        // First attempt — fails
+        const res1 = await app.request('/cashu-redeem', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: 'cashuA...', paymentHash }),
+        })
+        expect(res1.status).toBe(202)
 
-      // Second attempt — also fails, still 202
-      const res2 = await app.request('/cashu-redeem', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: 'cashuA...', paymentHash }),
-      })
-      expect(res2.status).toBe(202)
-      const body2 = await res2.json()
-      expect(body2.state).toBe('pending')
+        // Advance past lease expiry
+        vi.advanceTimersByTime(31_000)
 
-      booth.close()
+        // Second attempt — lease expired so recovery is attempted, but also fails
+        const res2 = await app.request('/cashu-redeem', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: 'cashuA...', paymentHash }),
+        })
+        expect(res2.status).toBe(202)
+        const body2 = await res2.json()
+        expect(body2.state).toBe('pending')
+        expect(redeemCashu).toHaveBeenCalledTimes(2)
+
+        booth.close()
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('concurrent retries while lease held: only lease holder calls redeem', async () => {
+      vi.useFakeTimers()
+      try {
+        const redeemCashu = vi.fn()
+          .mockRejectedValueOnce(new Error('ECONNREFUSED'))  // initial fail
+          .mockResolvedValueOnce(500)                         // recovery succeeds
+        const { app, booth, paymentHash } = setup({ redeemCashu })
+
+        // Store the invoice
+        await app.request('/route', { method: 'POST' })
+
+        // Initial attempt fails — claim with lease
+        await app.request('/cashu-redeem', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: 'cashuA...', paymentHash }),
+        })
+
+        // Advance past lease expiry
+        vi.advanceTimersByTime(31_000)
+
+        // Two concurrent retries — only one acquires recovery lease
+        const makeOpts = () => ({
+          method: 'POST' as const,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: 'cashuA...', paymentHash }),
+        })
+        const [r1, r2] = await Promise.all([
+          app.request('/cashu-redeem', makeOpts()),
+          app.request('/cashu-redeem', makeOpts()),
+        ])
+
+        const statuses = [r1.status, r2.status].sort()
+        expect(statuses).toEqual([200, 202])
+
+        // Only one additional redeem call (2 total: initial fail + recovery)
+        expect(redeemCashu).toHaveBeenCalledTimes(2)
+
+        booth.close()
+      } finally {
+        vi.useRealTimers()
+      }
     })
 
     it('does not expose /cashu-redeem when adapter not provided', async () => {

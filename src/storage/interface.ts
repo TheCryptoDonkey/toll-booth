@@ -30,15 +30,20 @@ export interface StorageBackend {
   /** Atomically settle and credit in one operation. Returns true if newly settled, false if already was. */
   settleWithCredit(paymentHash: string, amount: number): boolean
   /**
-   * Write-ahead claim before an irreversible external call (e.g. Cashu mint redeem).
+   * Write-ahead claim with an exclusive lease before an irreversible external call.
    * Returns true if newly claimed, false if already claimed or settled.
+   * Sets a lease that expires after `leaseMs` milliseconds (default 30000).
    * The claim persists across restarts for crash recovery.
    */
-  claimForRedeem(paymentHash: string, token: string): boolean
+  claimForRedeem(paymentHash: string, token: string, leaseMs?: number): boolean
   /** Returns all claims that were never settled (for crash recovery on startup). */
   pendingClaims(): PendingClaim[]
-  /** Returns a single pending (unsettled) claim by payment hash, or undefined if none exists. */
-  getPendingClaim(paymentHash: string): PendingClaim | undefined
+  /**
+   * Atomically acquire an exclusive recovery lease on an existing pending claim.
+   * Only succeeds if the claim exists, is not settled, and the previous lease has expired.
+   * Returns the claim if the lease was acquired, undefined otherwise.
+   */
+  tryAcquireRecoveryLease(paymentHash: string, leaseMs: number): PendingClaim | undefined
   storeInvoice(paymentHash: string, bolt11: string, amountSats: number, macaroon: string): void
   getInvoice(paymentHash: string): StoredInvoice | undefined
   close(): void

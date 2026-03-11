@@ -195,6 +195,8 @@ export function createHonoNwcHandler(
  * - If the process crashes after redeem() but before settlement, the
  *   claim survives for recovery on restart via pendingClaims()
  */
+export const REDEEM_LEASE_MS = 30_000
+
 export function createHonoCashuHandler(
   redeem: (token: string, paymentHash: string) => Promise<number>,
   storage: StorageBackend,
@@ -217,17 +219,18 @@ export function createHonoCashuHandler(
         return c.json({ credited: 0, macaroon: invoice?.macaroon })
       }
 
-      // Durable claim — written to DB before the irreversible mint call.
-      // Only one process/instance wins the claim (atomic INSERT).
-      if (!storage.claimForRedeem(paymentHash, token)) {
+      // Durable claim with exclusive lease — written to DB before the
+      // irreversible mint call. Only one process/instance wins (atomic INSERT).
+      if (!storage.claimForRedeem(paymentHash, token, REDEEM_LEASE_MS)) {
         // Already settled — idempotent success
         if (storage.isSettled(paymentHash)) {
           const invoice = storage.getInvoice(paymentHash)
           return c.json({ credited: 0, macaroon: invoice?.macaroon })
         }
 
-        // Pending claim exists but not yet settled — attempt request-triggered recovery
-        const pendingClaim = storage.getPendingClaim(paymentHash)
+        // Pending claim exists — try to acquire exclusive recovery lease.
+        // Only succeeds if the previous lease has expired (holder crashed or timed out).
+        const pendingClaim = storage.tryAcquireRecoveryLease(paymentHash, REDEEM_LEASE_MS)
         if (pendingClaim) {
           try {
             const credited = await redeem(pendingClaim.token, paymentHash)
@@ -235,14 +238,13 @@ export function createHonoCashuHandler(
             const invoice = storage.getInvoice(paymentHash)
             return c.json({ credited: newlySettled ? credited : 0, macaroon: invoice?.macaroon })
           } catch {
-            // Recovery also failed — tell the client to retry later
+            // Recovery also failed — lease will expire, allowing future retry
             return c.json({ state: 'pending', retryAfterMs: 2000 }, 202)
           }
         }
 
-        // Shouldn't reach here, but defensive fallback
-        const invoice = storage.getInvoice(paymentHash)
-        return c.json({ credited: 0, macaroon: invoice?.macaroon })
+        // Lease still held by another request/process — tell client to retry
+        return c.json({ state: 'pending', retryAfterMs: 2000 }, 202)
       }
 
       // We hold the exclusive claim — call the external mint
@@ -252,7 +254,7 @@ export function createHonoCashuHandler(
         const invoice = storage.getInvoice(paymentHash)
         return c.json({ credited: newlySettled ? credited : 0, macaroon: invoice?.macaroon })
       } catch {
-        // Mint call failed — claim stays pending for recovery (restart or next request)
+        // Mint call failed — claim stays pending, lease will expire for recovery
         return c.json({ state: 'pending', retryAfterMs: 2000 }, 202)
       }
     } catch (err) {
