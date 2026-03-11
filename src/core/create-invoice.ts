@@ -1,4 +1,5 @@
 // src/core/create-invoice.ts
+import { randomBytes } from 'node:crypto'
 import QRCode from 'qrcode'
 import type { LightningBackend, CreditTier } from '../types.js'
 import type { StorageBackend } from '../storage/interface.js'
@@ -6,7 +7,7 @@ import { mintMacaroon } from '../macaroon.js'
 import type { CreateInvoiceRequest, CreateInvoiceResult } from './types.js'
 
 export interface CreateInvoiceDeps {
-  backend: LightningBackend
+  backend?: LightningBackend
   storage: StorageBackend
   rootKey: string
   tiers: CreditTier[]
@@ -41,29 +42,42 @@ export async function handleCreateInvoice(
       creditSats = tier.creditSats
     }
 
-    const invoice = await deps.backend.createInvoice(
-      requestedAmount,
-      `toll-booth: ${creditSats} sats credit`,
-    )
-    const macaroon = mintMacaroon(deps.rootKey, invoice.paymentHash, creditSats)
+    let paymentHash: string
+    let bolt11: string | undefined
 
-    deps.storage.storeInvoice(invoice.paymentHash, invoice.bolt11, creditSats, macaroon)
+    if (deps.backend) {
+      const invoice = await deps.backend.createInvoice(
+        requestedAmount,
+        `toll-booth: ${creditSats} sats credit`,
+      )
+      paymentHash = invoice.paymentHash
+      bolt11 = invoice.bolt11
+    } else {
+      // Cashu-only mode: synthetic payment hash
+      paymentHash = randomBytes(32).toString('hex')
+    }
 
-    const qrSvg = await QRCode.toString(
-      `lightning:${invoice.bolt11}`.toUpperCase(),
-      { type: 'svg', margin: 2 },
-    )
+    const macaroon = mintMacaroon(deps.rootKey, paymentHash, creditSats)
+
+    deps.storage.storeInvoice(paymentHash, bolt11 ?? '', creditSats, macaroon)
+
+    const qrSvg = bolt11
+      ? await QRCode.toString(
+          `lightning:${bolt11}`.toUpperCase(),
+          { type: 'svg', margin: 2 },
+        )
+      : undefined
 
     return {
       success: true,
       data: {
-        bolt11: invoice.bolt11,
-        paymentHash: invoice.paymentHash,
-        paymentUrl: `/invoice-status/${invoice.paymentHash}`,
+        bolt11: bolt11 ?? '',
+        paymentHash,
+        paymentUrl: `/invoice-status/${paymentHash}`,
         amountSats: requestedAmount,
         creditSats,
         macaroon,
-        qrSvg,
+        qrSvg: qrSvg ?? '',
       },
     }
   } catch (err) {

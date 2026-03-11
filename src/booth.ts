@@ -59,6 +59,10 @@ export class Booth {
   private readonly redeemCashu?: (token: string, paymentHash: string) => Promise<number>
 
   constructor(config: BoothOptions & EventHandler) {
+    if (!config.backend && !config.redeemCashu) {
+      throw new Error('At least one payment method required: provide a Lightning backend, redeemCashu callback, or both')
+    }
+
     const rootKeyInput = config.rootKey ?? randomBytes(32).toString('hex')
     if (!/^[0-9a-fA-F]{64}$/.test(rootKeyInput)) {
       throw new Error('rootKey must be exactly 64 hex characters (32 bytes)')

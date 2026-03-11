@@ -226,3 +226,69 @@ describe('TollBoothEngine (core)', () => {
     if (result.action === 'proxy') expect(result.creditBalance).toBe(990)
   })
 })
+
+describe('Cashu-only mode (no Lightning backend)', () => {
+  function makeCashuConfig(overrides: Partial<TollBoothCoreConfig> = {}): TollBoothCoreConfig {
+    return {
+      backend: undefined,
+      storage: memoryStorage(),
+      pricing: { '/route': 10 },
+      upstream: 'http://localhost:8002',
+      rootKey: ROOT_KEY,
+      ...overrides,
+    }
+  }
+
+  it('issues 402 challenge with synthetic payment hash and no bolt11', async () => {
+    const engine = createTollBooth(makeCashuConfig())
+    const result = await engine.handle(makeRequest())
+
+    expect(result.action).toBe('challenge')
+    if (result.action === 'challenge') {
+      expect(result.status).toBe(402)
+      expect(result.headers['WWW-Authenticate']).toMatch(/^L402 macaroon="/)
+      // No invoice in the WWW-Authenticate header
+      expect(result.headers['WWW-Authenticate']).not.toContain('invoice=')
+      // Body has payment_hash but no invoice
+      expect(result.body.payment_hash).toMatch(/^[0-9a-f]{64}$/)
+      expect(result.body).not.toHaveProperty('invoice')
+      expect(result.body).toHaveProperty('macaroon')
+    }
+  })
+
+  it('authorises access after Cashu settlement', async () => {
+    const storage = memoryStorage()
+    const engine = createTollBooth(makeCashuConfig({ storage }))
+
+    // Get a challenge to obtain a payment hash and macaroon
+    const challenge = await engine.handle(makeRequest())
+    expect(challenge.action).toBe('challenge')
+    if (challenge.action !== 'challenge') return
+
+    const paymentHash = challenge.body.payment_hash as string
+    const macaroon = challenge.body.macaroon as string
+
+    // Simulate Cashu redemption: settle + credit externally
+    storage.settleWithCredit(paymentHash, 1000)
+
+    // Use macaroon with 'settled' preimage (as Cashu clients do)
+    const req = makeRequest({
+      headers: { authorization: `L402 ${macaroon}:settled` },
+    })
+
+    const result = await engine.handle(req)
+    expect(result.action).toBe('proxy')
+    if (result.action === 'proxy') expect(result.creditBalance).toBe(990)
+  })
+
+  it('generates unique payment hashes per challenge', async () => {
+    const engine = createTollBooth(makeCashuConfig())
+
+    const r1 = await engine.handle(makeRequest())
+    const r2 = await engine.handle(makeRequest())
+
+    if (r1.action === 'challenge' && r2.action === 'challenge') {
+      expect(r1.body.payment_hash).not.toBe(r2.body.payment_hash)
+    }
+  })
+})

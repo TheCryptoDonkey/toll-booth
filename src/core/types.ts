@@ -19,7 +19,8 @@ export type TollBoothResult =
   | { action: 'pass'; upstream: string; headers: Record<string, string> }
 
 export interface TollBoothCoreConfig {
-  backend: LightningBackend
+  /** Lightning backend. Optional when Cashu-only mode is used. */
+  backend?: LightningBackend
   storage: StorageBackend
   pricing: Record<string, number>
   upstream: string

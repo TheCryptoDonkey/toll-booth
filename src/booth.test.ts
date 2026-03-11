@@ -730,6 +730,55 @@ describe('Booth', () => {
     booth.close()
   })
 
+  describe('Cashu-only mode (no backend)', () => {
+    it('throws if neither backend nor redeemCashu provided', () => {
+      expect(() => new Booth({
+        adapter: 'hono',
+        pricing: { '/route': 10 },
+        upstream: 'http://localhost',
+        rootKey: ROOT_KEY,
+        storage: memoryStorage(),
+      })).toThrow(/At least one payment method required/)
+    })
+
+    it('accepts Cashu-only config with redeemCashu but no backend', () => {
+      const booth = new Booth({
+        adapter: 'hono',
+        pricing: { '/route': 10 },
+        upstream: 'http://localhost',
+        rootKey: ROOT_KEY,
+        storage: memoryStorage(),
+        redeemCashu: vi.fn().mockResolvedValue(1000),
+      })
+      expect(booth).toBeDefined()
+      expect(booth.cashuRedeemHandler).toBeDefined()
+      booth.close()
+    })
+
+    it('issues 402 challenge without bolt11 in Cashu-only mode', async () => {
+      const app = new Hono()
+      const booth = new Booth({
+        adapter: 'hono',
+        pricing: { '/route': 10 },
+        upstream: 'http://localhost:9999',
+        rootKey: ROOT_KEY,
+        storage: memoryStorage(),
+        redeemCashu: vi.fn().mockResolvedValue(1000),
+      })
+
+      app.use('/route', booth.middleware as any)
+
+      const res = await app.request('/route', { method: 'POST' })
+      expect(res.status).toBe(402)
+      const body = await res.json()
+      expect(body.payment_hash).toMatch(/^[0-9a-f]{64}$/)
+      expect(body.macaroon).toBeTruthy()
+      expect(body).not.toHaveProperty('invoice')
+
+      booth.close()
+    })
+  })
+
   it('full flow: 402 -> payment page -> create invoice -> JSON status', async () => {
     const { app, booth, backend, paymentHash, preimage } = setup()
 

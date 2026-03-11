@@ -5,7 +5,7 @@ import { renderPaymentPage, renderErrorPage } from '../payment-page.js'
 import type { InvoiceStatusResult } from './types.js'
 
 export interface InvoiceStatusDeps {
-  backend: LightningBackend
+  backend?: LightningBackend
   storage: StorageBackend
   tiers?: CreditTier[]
   nwcEnabled?: boolean
@@ -23,6 +23,12 @@ export async function handleInvoiceStatus(
   const invoice = deps.storage.getInvoice(paymentHash)
   if (!invoice) {
     return { found: false, paid: false }
+  }
+
+  // In Cashu-only mode (no backend), check settlement status from storage
+  if (!deps.backend) {
+    const settled = deps.storage.isSettled(paymentHash)
+    return { found: true, paid: settled, invoice }
   }
 
   const status = await deps.backend.checkInvoice(paymentHash)
@@ -54,7 +60,9 @@ export async function renderInvoiceStatusHtml(
       }
     }
 
-    const status = await deps.backend.checkInvoice(paymentHash)
+    const status = deps.backend
+      ? await deps.backend.checkInvoice(paymentHash)
+      : { paid: deps.storage.isSettled(paymentHash), preimage: undefined }
     const html = await renderPaymentPage({
       invoice,
       paid: status.paid,

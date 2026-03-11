@@ -1,5 +1,5 @@
 // src/core/toll-booth.ts
-import { createHash } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 import { mintMacaroon, verifyMacaroon } from '../macaroon.js'
 import { FreeTier } from '../free-tier.js'
 import type { StorageBackend } from '../storage/interface.js'
@@ -82,14 +82,25 @@ export function createTollBooth(config: TollBoothCoreConfig): TollBoothEngine {
       }
 
       // Issue L402 challenge
-      const invoice = await config.backend.createInvoice(
-        defaultAmount,
-        `toll-booth: ${defaultAmount} sats credit`,
-      )
-      const macaroon = mintMacaroon(config.rootKey, invoice.paymentHash, defaultAmount)
+      let paymentHash: string
+      let bolt11: string | undefined
 
-      // Store invoice for payment page
-      config.storage.storeInvoice(invoice.paymentHash, invoice.bolt11, defaultAmount, macaroon)
+      if (config.backend) {
+        const invoice = await config.backend.createInvoice(
+          defaultAmount,
+          `toll-booth: ${defaultAmount} sats credit`,
+        )
+        paymentHash = invoice.paymentHash
+        bolt11 = invoice.bolt11
+      } else {
+        // Cashu-only mode: synthetic payment hash (no Lightning invoice)
+        paymentHash = randomBytes(32).toString('hex')
+      }
+
+      const macaroon = mintMacaroon(config.rootKey, paymentHash, defaultAmount)
+
+      // Store invoice for payment page (bolt11 is empty in Cashu-only mode)
+      config.storage.storeInvoice(paymentHash, bolt11 ?? '', defaultAmount, macaroon)
 
       config.onChallenge?.({
         timestamp: new Date().toISOString(),
@@ -97,20 +108,24 @@ export function createTollBooth(config: TollBoothCoreConfig): TollBoothEngine {
         amountSats: defaultAmount,
       })
 
+      const headers: Record<string, string> = bolt11
+        ? { 'WWW-Authenticate': `L402 macaroon="${macaroon}", invoice="${bolt11}"` }
+        : { 'WWW-Authenticate': `L402 macaroon="${macaroon}"` }
+
+      const body: Record<string, unknown> = {
+        error: 'Payment required',
+        macaroon,
+        payment_hash: paymentHash,
+        payment_url: `/invoice-status/${paymentHash}`,
+        amount_sats: defaultAmount,
+      }
+      if (bolt11) body.invoice = bolt11
+
       return {
         action: 'challenge',
         status: 402,
-        headers: {
-          'WWW-Authenticate': `L402 macaroon="${macaroon}", invoice="${invoice.bolt11}"`,
-        },
-        body: {
-          error: 'Payment required',
-          invoice: invoice.bolt11,
-          macaroon,
-          payment_hash: invoice.paymentHash,
-          payment_url: `/invoice-status/${invoice.paymentHash}`,
-          amount_sats: defaultAmount,
-        },
+        headers,
+        body,
       }
     },
   }

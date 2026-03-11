@@ -75,8 +75,11 @@ export interface CreditTier {
  * Configuration for a toll-booth instance.
  */
 export interface BoothConfig {
-  /** The Lightning backend to use for invoice creation and status checks. */
-  backend: LightningBackend
+  /**
+   * The Lightning backend to use for invoice creation and status checks.
+   * Optional when using Cashu-only mode (`redeemCashu` provided without a backend).
+   */
+  backend?: LightningBackend
 
   /**
    * Pricing table mapping route patterns to amounts in satoshis.
