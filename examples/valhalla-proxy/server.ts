@@ -53,7 +53,7 @@ const booth = new Booth({
 
 app.get('/invoice-status/:paymentHash', booth.invoiceStatusHandler as any)
 app.post('/create-invoice', booth.createInvoiceHandler as any)
-app.use('/*', booth.middleware as any)
+app.use('/', booth.middleware as any)
 
 // Daily free-tier reset
 const freeTierTimer = setInterval(() => {
