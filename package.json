@@ -58,7 +58,8 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "llms.txt"
   ],
   "scripts": {
     "build": "rm -rf dist && tsc",

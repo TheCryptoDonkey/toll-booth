@@ -71,9 +71,35 @@ const booth = new Booth({
   upstream: 'http://localhost:8080',
 })
 
-// Wire booth.middleware, booth.invoiceStatusHandler, booth.createInvoiceHandler
-// into your framework's router
+// Deno example
+Deno.serve({ port: 3000 }, async (req: Request) => {
+  const url = new URL(req.url)
+  if (url.pathname.startsWith('/invoice-status/'))
+    return booth.invoiceStatusHandler(req)
+  if (url.pathname === '/create-invoice' && req.method === 'POST')
+    return booth.createInvoiceHandler(req)
+  return booth.middleware(req)
+})
 \`\`\`
+
+### Cashu-only (no Lightning node)
+
+\`\`\`typescript
+import { Booth } from 'toll-booth'
+
+const booth = new Booth({
+  adapter: 'web-standard',
+  redeemCashu: async (token, paymentHash) => {
+    // Verify and redeem the ecash token with your Cashu mint
+    // Return the amount redeemed in satoshis
+    return amountRedeemed
+  },
+  pricing: { '/api': 5 },
+  upstream: 'http://localhost:8080',
+})
+\`\`\`
+
+No Lightning node, no channels, no liquidity management. Ideal for serverless and edge deployments.
 
 ## Configuration
 
