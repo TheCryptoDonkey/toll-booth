@@ -18,6 +18,64 @@ function mockBackend(): LightningBackend {
   }
 }
 
+describe('Web Standard adapter IP resolution', () => {
+  it('uses getClientIp callback when provided', async () => {
+    const backend = mockBackend()
+    const storage = memoryStorage()
+    const engine = createTollBooth({
+      backend,
+      storage,
+      pricing: { '/route': 10 },
+      upstream: 'http://localhost:8002',
+      rootKey: ROOT_KEY,
+      freeTier: { requestsPerDay: 2 },
+    })
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response('ok', { status: 200 }),
+    )
+
+    try {
+      const handler = createWebStandardMiddleware({
+        engine,
+        upstream: 'http://upstream.test',
+        getClientIp: () => '1.2.3.4',
+      })
+
+      const makeRequest = () => new Request('http://localhost/route', { method: 'POST' })
+
+      const res1 = await handler(makeRequest())
+      expect(res1.status).toBe(200)
+
+      const res2 = await handler(makeRequest())
+      expect(res2.status).toBe(200)
+
+      const res3 = await handler(makeRequest())
+      expect(res3.status).toBe(402)
+    } finally {
+      fetchSpy.mockRestore()
+    }
+  })
+
+  it('throws when freeTier enabled without trustProxy or getClientIp', () => {
+    const backend = mockBackend()
+    const storage = memoryStorage()
+    const engine = createTollBooth({
+      backend,
+      storage,
+      pricing: { '/route': 10 },
+      upstream: 'http://localhost:8002',
+      rootKey: ROOT_KEY,
+      freeTier: { requestsPerDay: 5 },
+    })
+
+    expect(() => createWebStandardMiddleware({
+      engine,
+      upstream: 'http://localhost:8002',
+    })).toThrow(/freeTier requires either trustProxy: true or getClientIp/)
+  })
+})
+
 describe('Web Standard adapter', () => {
   it('returns 402 for priced routes without auth', async () => {
     const backend = mockBackend()

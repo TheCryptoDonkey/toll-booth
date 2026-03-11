@@ -52,8 +52,6 @@ export interface WebStandardMiddlewareConfig {
    * Custom callback to extract client IP from the request.
    * Use this for platform-specific IP resolution (e.g. Cloudflare's
    * `CF-Connecting-IP`, Deno's `connInfo.remoteAddr`).
-   * When omitted with `trustProxy: false`, the IP defaults to
-   * `'unknown'` — which collapses free-tier to a single bucket.
    * If `freeTier` is enabled, provide either `trustProxy: true` or
    * a `getClientIp` callback for per-client isolation.
    */
@@ -73,12 +71,11 @@ export function createWebStandardMiddleware(
   const extraHeaders = config.responseHeaders ?? {}
   const upstreamTimeout = config.upstreamTimeout ?? 30_000
 
-  // Warn at construction time if free-tier is enabled but no IP resolution configured
+  // Fail closed when free-tier is enabled but all requests would collapse
+  // into one shared bucket.
   if (engine.freeTier && !config.trustProxy && !config.getClientIp) {
-    console.error(
-      '[toll-booth] Warning: freeTier is enabled but neither trustProxy nor getClientIp is configured. ' +
-      'All clients will share a single free-tier bucket. Provide trustProxy: true (behind a reverse proxy) ' +
-      'or a getClientIp callback for per-client isolation.',
+    throw new Error(
+      'freeTier requires either trustProxy: true or getClientIp for the web-standard adapter',
     )
   }
 

@@ -32,28 +32,32 @@ describe('Hono adapter IP resolution', () => {
       freeTier: { requestsPerDay: 2 },
     })
 
-    const app = new Hono()
-    app.use('/route', createHonoMiddleware({
-      engine,
-      upstream: 'http://localhost:8002',
-      getClientIp: () => '1.2.3.4',
-    }))
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response('ok', { status: 200 }),
+    )
 
-    // First request should pass (free tier)
-    const res1 = await app.request('/route', { method: 'POST' })
-    // Engine proxies upstream, which isn't running, so expect a non-402 error
-    expect(res1.status).not.toBe(402)
+    try {
+      const app = new Hono()
+      app.use('/route', createHonoMiddleware({
+        engine,
+        upstream: 'http://upstream.test',
+        getClientIp: () => '1.2.3.4',
+      }))
 
-    // Second request for same IP
-    const res2 = await app.request('/route', { method: 'POST' })
-    expect(res2.status).not.toBe(402)
+      const res1 = await app.request('/route', { method: 'POST' })
+      expect(res1.status).toBe(200)
 
-    // Third request should be challenged (free tier exhausted for 1.2.3.4)
-    const res3 = await app.request('/route', { method: 'POST' })
-    expect(res3.status).toBe(402)
+      const res2 = await app.request('/route', { method: 'POST' })
+      expect(res2.status).toBe(200)
+
+      const res3 = await app.request('/route', { method: 'POST' })
+      expect(res3.status).toBe(402)
+    } finally {
+      fetchSpy.mockRestore()
+    }
   })
 
-  it('warns when freeTier enabled without trustProxy or getClientIp', () => {
+  it('throws when freeTier enabled without trustProxy or getClientIp', () => {
     const backend = mockBackend()
     const storage = memoryStorage()
     const engine = createTollBooth({
@@ -65,10 +69,10 @@ describe('Hono adapter IP resolution', () => {
       freeTier: { requestsPerDay: 5 },
     })
 
-    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    createHonoMiddleware({ engine, upstream: 'http://localhost:8002' })
-    expect(spy).toHaveBeenCalledWith(expect.stringContaining('freeTier is enabled'))
-    spy.mockRestore()
+    expect(() => createHonoMiddleware({
+      engine,
+      upstream: 'http://localhost:8002',
+    })).toThrow(/freeTier requires either trustProxy: true or getClientIp/)
   })
 })
 

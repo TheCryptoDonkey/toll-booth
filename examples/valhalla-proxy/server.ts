@@ -26,13 +26,16 @@ const booth = new Booth({
     '/isochrone': 5,
     '/sources_to_targets': 10,
   },
+  strictPricing: true,
   freeTier: {
     requestsPerDay: parseInt(process.env.FREE_TIER_REQUESTS ?? '10', 10),
   },
   upstream: process.env.VALHALLA_URL ?? 'http://localhost:8002',
   responseHeaders: { 'X-Coverage': 'GB' },
   defaultInvoiceAmount: parseInt(process.env.DEFAULT_INVOICE_SATS ?? '1000', 10),
+  dbPath: process.env.TOLL_BOOTH_DB_PATH ?? './toll-booth.db',
   rootKey: process.env.ROOT_KEY,
+  trustProxy,
   creditTiers: [
     { amountSats: 1_000,   creditSats: 1_000,   label: 'Starter' },
     { amountSats: 10_000,  creditSats: 11_100,  label: 'Pro' },

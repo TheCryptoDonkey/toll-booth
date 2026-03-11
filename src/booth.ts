@@ -129,6 +129,7 @@ export class Booth {
       engine: this.engine,
       upstream,
       trustProxy: config.trustProxy,
+      getClientIp: config.getClientIp,
       responseHeaders: config.responseHeaders,
       upstreamTimeout: config.upstreamTimeout,
     }

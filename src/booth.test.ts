@@ -24,7 +24,9 @@ function setup(overrides?: Partial<{
   nwcPayInvoice: any
   redeemCashu: any
   trustProxy: boolean
-
+  getClientIp: (request: unknown) => string
+  freeTier: { requestsPerDay: number }
+  upstream: string
 }>) {
   const { preimage, paymentHash } = makePreimageAndHash()
 
@@ -123,6 +125,33 @@ describe('Booth', () => {
         storage: memoryStorage(),
         dbPath: '/tmp/should-not-be-used.db',
       })).toThrow(/Provide either storage or dbPath, not both/)
+    })
+  })
+
+  describe('client IP resolution', () => {
+    it('passes getClientIp through to the Hono adapter', async () => {
+      const { app, booth } = setup({
+        freeTier: { requestsPerDay: 2 },
+        getClientIp: () => '1.2.3.4',
+        upstream: 'http://upstream.test',
+      })
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response('ok', { status: 200 }),
+      )
+
+      try {
+        const res1 = await app.request('/route', { method: 'POST' })
+        expect(res1.status).toBe(200)
+
+        const res2 = await app.request('/route', { method: 'POST' })
+        expect(res2.status).toBe(200)
+
+        const res3 = await app.request('/route', { method: 'POST' })
+        expect(res3.status).toBe(402)
+      } finally {
+        fetchSpy.mockRestore()
+        booth.close()
+      }
     })
   })
 
@@ -378,17 +407,22 @@ describe('Booth', () => {
         body: JSON.stringify({ token: 'cashuA...', paymentHash }),
       })
 
-      // Use the macaroon with 'settled' as preimage — should authorise
-      const authedRes = await app.request('/route', {
-        method: 'POST',
-        headers: { Authorization: `L402 ${macaroon}:settled` },
-      })
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response('ok', { status: 200 }),
+      )
 
-      // The middleware proxies upstream, but since upstream isn't running,
-      // we check that the result is NOT a 402 challenge
-      expect(authedRes.status).not.toBe(402)
+      try {
+        // Use the macaroon with 'settled' as preimage — should authorise
+        const authedRes = await app.request('/route', {
+          method: 'POST',
+          headers: { Authorization: `L402 ${macaroon}:settled` },
+        })
 
-      booth.close()
+        expect(authedRes.status).toBe(200)
+      } finally {
+        fetchSpy.mockRestore()
+        booth.close()
+      }
     })
 
     it('recoverPendingClaims retries unsettled claims on startup', async () => {

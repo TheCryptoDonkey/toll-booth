@@ -13,6 +13,19 @@ interface NwcParams {
   secret: string
 }
 
+interface NwcLookupResult {
+  paid?: boolean
+  settled?: boolean
+  settled_at?: number | string
+  state?: string
+  preimage?: string
+  payment_preimage?: string
+  payment_hash?: string
+  paymentHash?: string
+  invoice?: string
+  bolt11?: string
+}
+
 function parseNwcUrl(nwcUrl: string): NwcParams {
   // Replace the custom scheme so URL parser can handle it
   const url = new URL(nwcUrl.replace('nostr+walletconnect://', 'https://'))
@@ -29,10 +42,6 @@ function parseNwcUrl(nwcUrl: string): NwcParams {
 /**
  * Lightning backend adapter for Alby / Nostr Wallet Connect (NWC).
  *
- * **@experimental** — `checkInvoice()` cannot observe payment state from
- * the relay or wallet, so invoices never transition to `paid`. Use only
- * for development or testing. For production, use phoenixd, LND, or CLN.
- *
  * This is a simplified implementation that sends JSON requests directly
  * to an NWC relay. For production NWC, you'd encrypt messages with
  * NIP-04/NIP-44. This works with NWC proxies that accept JSON directly.
@@ -44,83 +53,136 @@ export function albyBackend(config: AlbyConfig): LightningBackend {
   const params = parseNwcUrl(config.nwcUrl)
   const timeoutMs = config.timeout ?? 30_000
 
-  // NWC doesn't support lookup by payment hash, so we track invoices in memory
-  const invoiceMap = new Map<string, { bolt11: string; paid: boolean }>()
+  const invoiceMap = new Map<string, { bolt11: string; paid: boolean; preimage?: string }>()
 
   return {
     async createInvoice(amountSats: number, memo?: string): Promise<Invoice> {
-      const { default: WebSocket } = await import('ws')
+      const result = await sendNwcRequest<Record<string, unknown>>(
+        params,
+        timeoutMs,
+        'make_invoice',
+        {
+          amount: amountSats * 1000, // NWC uses millisats
+          description: memo,
+        },
+      )
 
-      return new Promise<Invoice>((resolve, reject) => {
-        const ws = new WebSocket(params.relay)
-        let settled = false
+      const bolt11 = getStringField(result, 'invoice') ?? getStringField(result, 'bolt11')
+      const paymentHash = getStringField(result, 'payment_hash') ?? getStringField(result, 'paymentHash')
 
-        const cleanup = () => {
-          if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-            ws.close()
-          }
-        }
+      if (!bolt11 || !paymentHash) {
+        throw new Error('NWC response missing invoice or payment_hash')
+      }
 
-        const timer = setTimeout(() => {
-          if (!settled) {
-            settled = true
-            cleanup()
-            reject(new Error('NWC request timed out'))
-          }
-        }, timeoutMs)
-
-        ws.on('open', () => {
-          const request = JSON.stringify({
-            method: 'make_invoice',
-            params: {
-              amount: amountSats * 1000, // NWC uses millisats
-              description: memo,
-            },
-          })
-          ws.send(request)
-        })
-
-        ws.on('message', (data: Buffer | string) => {
-          if (settled) return
-          settled = true
-          clearTimeout(timer)
-
-          try {
-            const response = JSON.parse(data.toString())
-            const result = response.result ?? response
-
-            const bolt11 = result.invoice ?? result.bolt11
-            const paymentHash = result.payment_hash
-
-            if (!bolt11 || !paymentHash) {
-              cleanup()
-              reject(new Error('NWC response missing invoice or payment_hash'))
-              return
-            }
-
-            invoiceMap.set(paymentHash, { bolt11, paid: false })
-            cleanup()
-            resolve({ bolt11, paymentHash })
-          } catch (err) {
-            cleanup()
-            reject(new Error(`Failed to parse NWC response: ${err}`))
-          }
-        })
-
-        ws.on('error', (err: Error) => {
-          if (!settled) {
-            settled = true
-            clearTimeout(timer)
-            reject(new Error(`NWC WebSocket error: ${err.message}`))
-          }
-        })
-      })
+      invoiceMap.set(paymentHash, { bolt11, paid: false })
+      return { bolt11, paymentHash }
     },
 
     async checkInvoice(paymentHash: string): Promise<InvoiceStatus> {
       const entry = invoiceMap.get(paymentHash)
       if (!entry) return { paid: false }
-      return { paid: entry.paid }
+
+      if (entry.paid) {
+        return { paid: true, preimage: entry.preimage }
+      }
+
+      const result = await sendNwcRequest<NwcLookupResult>(
+        params,
+        timeoutMs,
+        'lookup_invoice',
+        { payment_hash: paymentHash },
+      )
+      const lookupRecord = result as Record<string, unknown>
+
+      const paid = isPaid(result)
+      const preimage = paid
+        ? getStringField(lookupRecord, 'payment_preimage') ?? getStringField(lookupRecord, 'preimage')
+        : undefined
+      const bolt11 = getStringField(lookupRecord, 'invoice') ?? getStringField(lookupRecord, 'bolt11') ?? entry.bolt11
+
+      invoiceMap.set(paymentHash, { bolt11, paid, preimage })
+      return { paid, preimage }
     },
   }
+}
+
+async function sendNwcRequest<T>(
+  params: NwcParams,
+  timeoutMs: number,
+  method: string,
+  requestParams: Record<string, unknown>,
+): Promise<T> {
+  const { default: WebSocket } = await import('ws')
+
+  return new Promise<T>((resolve, reject) => {
+    const ws = new WebSocket(params.relay)
+    let settled = false
+
+    const cleanup = () => {
+      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+        ws.close()
+      }
+    }
+
+    const finish = (fn: () => void) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      cleanup()
+      fn()
+    }
+
+    const timer = setTimeout(() => {
+      finish(() => reject(new Error(`NWC ${method} timed out`)))
+    }, timeoutMs)
+
+    ws.on('open', () => {
+      ws.send(JSON.stringify({
+        method,
+        params: requestParams,
+      }))
+    })
+
+    ws.on('message', (data: Buffer | string) => {
+      finish(() => {
+        try {
+          const response = JSON.parse(data.toString()) as Record<string, unknown>
+          const error = response.error
+          if (error) {
+            reject(new Error(`NWC ${method} failed: ${formatError(error)}`))
+            return
+          }
+
+          resolve((response.result ?? response) as T)
+        } catch (err) {
+          reject(new Error(`Failed to parse NWC response: ${err}`))
+        }
+      })
+    })
+
+    ws.on('error', (err: Error) => {
+      finish(() => reject(new Error(`NWC WebSocket error: ${err.message}`)))
+    })
+  })
+}
+
+function getStringField(record: Record<string, unknown>, key: string): string | undefined {
+  const value = record[key]
+  return typeof value === 'string' && value.length > 0 ? value : undefined
+}
+
+function isPaid(result: NwcLookupResult): boolean {
+  return result.paid === true ||
+    result.settled === true ||
+    result.state === 'paid' ||
+    result.state === 'settled' ||
+    result.settled_at !== undefined
+}
+
+function formatError(error: unknown): string {
+  if (typeof error === 'string') return error
+  if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string') {
+    return error.message
+  }
+  return 'unknown error'
 }

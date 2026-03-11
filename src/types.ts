@@ -98,7 +98,8 @@ export interface BoothConfig {
 
   /**
    * Default invoice amount in satoshis. Controls how many credits are
-   * minted per invoice (not the cost of unpriced routes).
+   * minted per invoice, and is also used as the route cost when
+   * `strictPricing` challenges an unpriced route.
    */
   defaultInvoiceAmount?: number
 
@@ -128,6 +129,13 @@ export interface BoothConfig {
    * Keep disabled unless a trusted proxy overwrites these headers.
    */
   trustProxy?: boolean
+
+  /**
+   * Custom callback to resolve the client IP for adapters that cannot infer
+   * it directly (for example Hono or generic Web Standard runtimes).
+   * The callback receives the adapter-specific request object.
+   */
+  getClientIp?: (request: unknown) => string
 
   /**
    * Extra headers to include on every response (e.g. `{ 'X-Coverage': 'GB' }`).

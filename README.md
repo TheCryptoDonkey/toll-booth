@@ -7,12 +7,13 @@ Embeddable [L402](https://docs.lightning.engineering/the-lightning-network/l402)
 
 ```ts
 import { Hono } from 'hono'
-import { tollBooth } from 'toll-booth'
+import { Booth } from 'toll-booth'
 import { phoenixdBackend } from 'toll-booth/backends/phoenixd'
 
 const app = new Hono()
 
-const booth = tollBooth({
+const booth = new Booth({
+  adapter: 'hono',
   backend: phoenixdBackend({ url: 'http://localhost:9740', password: 'your-password' }),
   pricing: {
     '/api/route': 2,        // must match the mounted paths the middleware sees
@@ -27,7 +28,7 @@ const booth = tollBooth({
   strictPricing: true, // reject unpriced routes with 402 instead of passing them through
 })
 
-app.use('/api/*', booth)
+app.use('/api/*', booth.middleware)
 ```
 
 ## Why not Aperture?
@@ -81,7 +82,7 @@ Each IP address gets a configurable number of free requests per day — no signu
 | LND        | Implemented | Industry standard |
 | CLN        | Implemented | Core Lightning REST API |
 | LNbits     | Implemented | Any LNbits instance — self-hosted or hosted |
-| Alby (NWC) | Experimental | Nostr Wallet Connect — `checkInvoice()` cannot observe payment state; use for dev/testing only |
+| Alby (NWC) | Experimental | Requires an NWC proxy/relay that supports both `make_invoice` and `lookup_invoice`; still not recommended for production |
 
 ## Reference deployment
 
