@@ -198,10 +198,34 @@ sequenceDiagram
 | | Aperture | toll-booth |
 |---|---|---|
 | **Language** | Go binary | TypeScript middleware |
-| **Deployment** | Standalone reverse proxy | Embeds in your existing app |
+| **Deployment** | Standalone reverse proxy | Embeds in your app, or runs as a gateway in front of any HTTP service |
 | **Lightning node** | Requires LND | Phoenixd, LND, CLN, LNbits, or none (Cashu-only) |
 | **Serverless** | No — long-running process | Yes — Web Standard adapter runs on Cloudflare Workers, Deno, Bun |
 | **Configuration** | YAML file | Programmatic (code) |
+
+## Using toll-booth with any API
+
+toll-booth works as a **reverse proxy gateway**, so the upstream API can be written in any language - C#, Go, Python, Ruby, Java, or anything else that speaks HTTP. The upstream service doesn't need to know about L402 or Lightning; it just receives normal requests.
+
+```
+Client ──▶ toll-booth (Node.js) ──▶ Your API (any language)
+                │                        │
+          L402 payment gating      Plain HTTP requests
+          Macaroon verification    X-Credit-Balance header added
+```
+
+Point `upstream` at your existing service:
+
+```typescript
+const booth = new Booth({
+  adapter: 'express',
+  backend: phoenixdBackend({ url: '...', password: '...' }),
+  pricing: { '/api/search': 5, '/api/generate': 20 },
+  upstream: 'http://my-dotnet-api:5000',  // ASP.NET, FastAPI, Gin, Rails...
+})
+```
+
+Deploy toll-booth as a sidecar (Docker Compose, Kubernetes) or as a standalone gateway in front of multiple services. See [`examples/valhalla-proxy/`](examples/valhalla-proxy/) for a complete Docker Compose reference - the Valhalla routing engine it gates is a C++ service.
 
 ## Production checklist
 
