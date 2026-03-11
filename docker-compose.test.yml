@@ -3,12 +3,11 @@
 
 services:
   bitcoind:
-    image: btcpayserver/bitcoin:27.0
+    image: lncm/bitcoind:v27.0
     restart: "no"
     ports:
       - "127.0.0.1:18443:18443"
     command:
-      - bitcoind
       - -regtest
       - -rpcuser=test
       - -rpcpassword=test

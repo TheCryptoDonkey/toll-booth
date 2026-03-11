@@ -53,12 +53,7 @@ export function lndBackend(config: LndConfig): LightningBackend {
     },
 
     async checkInvoice(paymentHash: string): Promise<InvoiceStatus> {
-      const hashBase64 = Buffer.from(paymentHash, 'hex')
-        .toString('base64')
-        .replace(/\+/g, '-')
-        .replace(/\//g, '_')
-
-      const res = await fetch(`${baseUrl}/v1/invoice/${hashBase64}`, {
+      const res = await fetch(`${baseUrl}/v1/invoice/${paymentHash}`, {
         headers: { 'Grpc-Metadata-macaroon': macaroonHex },
       })
 

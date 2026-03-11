@@ -125,7 +125,16 @@ if $RUN_LN; then
     exit 1
   fi
 
-  echo "Channel active. Bob can pay Alice's invoices."
+  # Wait for channel graph to propagate (required for pathfinding)
+  echo "Waiting for channel graph sync..."
+  EDGES=0
+  for i in $(seq 1 30); do
+    EDGES=$(bob_cli describegraph 2>/dev/null | jq '.edges | length')
+    if [ "$EDGES" -gt 0 ]; then break; fi
+    sleep 1
+  done
+  LOCAL=$(bob_cli listchannels 2>/dev/null | jq -r '.channels[0].local_balance // "0"')
+  echo "Channel ready (edges: $EDGES, local balance: $LOCAL sats). Bob can pay Alice's invoices."
 
   # Extract macaroons
   $COMPOSE cp lnd-alice:/root/.lnd/data/chain/bitcoin/regtest/admin.macaroon /tmp/toll-booth-alice.macaroon

@@ -66,8 +66,12 @@ describe.skipIf(!hasCredentials)('lnd integration', () => {
     }
     expect(payData.payment_error).toBeFalsy()
 
-    // Verify Alice sees the invoice as paid
-    const status = await backend.checkInvoice(invoice.paymentHash)
+    // Poll until Alice sees the invoice as paid (settlement propagation)
+    let status = await backend.checkInvoice(invoice.paymentHash)
+    for (let i = 0; i < 20 && !status.paid; i++) {
+      await new Promise((r) => setTimeout(r, 250))
+      status = await backend.checkInvoice(invoice.paymentHash)
+    }
     expect(status.paid).toBe(true)
     expect(status.preimage).toMatch(/^[0-9a-f]{64}$/)
 
