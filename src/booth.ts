@@ -22,7 +22,7 @@ import { createWebStandardMiddleware, createWebStandardInvoiceStatusHandler, cre
 
 export type AdapterType = 'hono' | 'express' | 'web-standard'
 
-export interface BoothOptions extends Omit<BoothConfig, 'dbPath'> {
+export interface BoothOptions extends BoothConfig {
   adapter: AdapterType
   storage?: StorageBackend
 }
@@ -68,7 +68,11 @@ export class Booth {
       throw new Error('rootKey must be exactly 64 hex characters (32 bytes)')
     }
     this.rootKey = rootKeyInput
-    this.storage = config.storage ?? sqliteStorage()
+
+    if (config.storage && config.dbPath) {
+      throw new Error('Provide either storage or dbPath, not both')
+    }
+    this.storage = config.storage ?? sqliteStorage({ path: config.dbPath ?? './toll-booth.db' })
     this.stats = new StatsCollector()
 
     const defaultAmount = config.defaultInvoiceAmount ?? 1000
@@ -87,6 +91,7 @@ export class Booth {
       defaultInvoiceAmount: defaultAmount,
       rootKey: this.rootKey,
       freeTier: config.freeTier,
+      strictPricing: config.strictPricing,
       creditTiers: config.creditTiers,
       onPayment: (event) => {
         stats.recordPayment(event)
@@ -125,6 +130,7 @@ export class Booth {
       upstream,
       trustProxy: config.trustProxy,
       responseHeaders: config.responseHeaders,
+      upstreamTimeout: config.upstreamTimeout,
     }
 
     switch (config.adapter) {

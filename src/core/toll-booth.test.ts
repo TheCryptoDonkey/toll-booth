@@ -227,6 +227,43 @@ describe('TollBoothEngine (core)', () => {
   })
 })
 
+describe('strictPricing', () => {
+  it('challenges unpriced routes when strictPricing is true', async () => {
+    const engine = createTollBooth(makeConfig({ strictPricing: true }))
+    const result = await engine.handle(makeRequest({ path: '/unpriced-route' }))
+    expect(result.action).toBe('challenge')
+  })
+
+  it('passes unpriced routes when strictPricing is false (default)', async () => {
+    const engine = createTollBooth(makeConfig())
+    const result = await engine.handle(makeRequest({ path: '/unpriced-route' }))
+    expect(result.action).toBe('pass')
+  })
+
+  it('uses defaultInvoiceAmount as cost for unpriced routes under strictPricing', async () => {
+    const { preimage, paymentHash } = makePreimageAndHash()
+    const storage = memoryStorage()
+    const engine = createTollBooth(makeConfig({
+      storage,
+      strictPricing: true,
+      defaultInvoiceAmount: 50,
+    }))
+
+    const macaroon = mintMacaroon(ROOT_KEY, paymentHash, 1000)
+    const req = makeRequest({
+      path: '/unpriced-route',
+      headers: { authorization: `L402 ${macaroon}:${preimage}` },
+    })
+
+    const result = await engine.handle(req)
+    expect(result.action).toBe('proxy')
+    if (result.action === 'proxy') {
+      // 1000 credit - 50 cost (defaultInvoiceAmount) = 950
+      expect(result.creditBalance).toBe(950)
+    }
+  })
+})
+
 describe('Cashu-only mode (no Lightning backend)', () => {
   function makeCashuConfig(overrides: Partial<TollBoothCoreConfig> = {}): TollBoothCoreConfig {
     return {

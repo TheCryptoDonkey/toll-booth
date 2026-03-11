@@ -97,10 +97,17 @@ export interface BoothConfig {
   freeTier?: { requestsPerDay: number }
 
   /**
-   * Default invoice amount in satoshis, used when a route is not
-   * listed in the pricing table. Required if any routes are not priced.
+   * Default invoice amount in satoshis. Controls how many credits are
+   * minted per invoice (not the cost of unpriced routes).
    */
   defaultInvoiceAmount?: number
+
+  /**
+   * When true, unpriced routes are challenged (402) using `defaultInvoiceAmount`
+   * as the cost, instead of being passed through for free. This prevents
+   * mount-prefix mismatches or typos from silently bypassing billing.
+   */
+  strictPricing?: boolean
 
   /**
    * Root key used for macaroon generation and verification, as a
@@ -121,12 +128,6 @@ export interface BoothConfig {
    * Keep disabled unless a trusted proxy overwrites these headers.
    */
   trustProxy?: boolean
-
-  /**
-   * Optional shared secret for `/stats` and `/admin/reset-free-tier`.
-   * When set, send `Authorization: Bearer <token>` or `X-Admin-Token`.
-   */
-  adminToken?: string
 
   /**
    * Extra headers to include on every response (e.g. `{ 'X-Coverage': 'GB' }`).

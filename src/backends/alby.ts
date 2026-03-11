@@ -29,6 +29,10 @@ function parseNwcUrl(nwcUrl: string): NwcParams {
 /**
  * Lightning backend adapter for Alby / Nostr Wallet Connect (NWC).
  *
+ * **@experimental** — `checkInvoice()` cannot observe payment state from
+ * the relay or wallet, so invoices never transition to `paid`. Use only
+ * for development or testing. For production, use phoenixd, LND, or CLN.
+ *
  * This is a simplified implementation that sends JSON requests directly
  * to an NWC relay. For production NWC, you'd encrypt messages with
  * NIP-04/NIP-44. This works with NWC proxies that accept JSON directly.

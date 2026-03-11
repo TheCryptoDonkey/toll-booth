@@ -20,6 +20,8 @@ export interface ExpressMiddlewareConfig {
   upstream: string
   trustProxy?: boolean
   responseHeaders?: Record<string, string>
+  /** Timeout in milliseconds for upstream proxy requests (default: 30000). */
+  upstreamTimeout?: number
 }
 
 export function createExpressMiddleware(
@@ -33,6 +35,7 @@ export function createExpressMiddleware(
   const engine = config.engine
   const upstreamBase = config.upstream.replace(/\/$/, '')
   const extraHeaders = config.responseHeaders ?? {}
+  const upstreamTimeout = config.upstreamTimeout ?? 30_000
 
   return async (req: Request, res: Response, _next: NextFunction) => {
     const ip = config.trustProxy
@@ -74,7 +77,7 @@ export function createExpressMiddleware(
         const init: RequestInit & { duplex?: string } = {
           method: req.method,
           headers: fwdHeaders,
-          signal: AbortSignal.timeout(30_000),
+          signal: AbortSignal.timeout(upstreamTimeout),
           duplex: 'half',
         }
 

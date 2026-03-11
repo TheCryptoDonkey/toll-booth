@@ -11,7 +11,7 @@ export type WebStandardHandler = (req: Request) => Promise<Response>
 
 // -- Helpers ------------------------------------------------------------------
 
-async function proxyUpstream(upstream: string, req: Request): Promise<Response> {
+async function proxyUpstream(upstream: string, req: Request, timeoutMs = 30_000): Promise<Response> {
   const url = new URL(req.url)
   const target = `${upstream}${url.pathname}${url.search}`
   const headers = new Headers(req.headers)
@@ -21,7 +21,7 @@ async function proxyUpstream(upstream: string, req: Request): Promise<Response> 
   const init: RequestInit & { duplex?: string } = {
     method: req.method,
     headers,
-    signal: AbortSignal.timeout(30_000),
+    signal: AbortSignal.timeout(timeoutMs),
     duplex: 'half',
   }
 
@@ -46,6 +46,18 @@ export interface WebStandardMiddlewareConfig {
   upstream: string
   trustProxy?: boolean
   responseHeaders?: Record<string, string>
+  /** Timeout in milliseconds for upstream proxy requests (default: 30000). */
+  upstreamTimeout?: number
+  /**
+   * Custom callback to extract client IP from the request.
+   * Use this for platform-specific IP resolution (e.g. Cloudflare's
+   * `CF-Connecting-IP`, Deno's `connInfo.remoteAddr`).
+   * When omitted with `trustProxy: false`, the IP defaults to
+   * `'unknown'` — which collapses free-tier to a single bucket.
+   * If `freeTier` is enabled, provide either `trustProxy: true` or
+   * a `getClientIp` callback for per-client isolation.
+   */
+  getClientIp?: (req: Request) => string
 }
 
 export function createWebStandardMiddleware(
@@ -59,12 +71,24 @@ export function createWebStandardMiddleware(
   const engine = config.engine
   const upstreamBase = config.upstream.replace(/\/$/, '')
   const extraHeaders = config.responseHeaders ?? {}
+  const upstreamTimeout = config.upstreamTimeout ?? 30_000
+
+  // Warn at construction time if free-tier is enabled but no IP resolution configured
+  if (engine.freeTier && !config.trustProxy && !config.getClientIp) {
+    console.error(
+      '[toll-booth] Warning: freeTier is enabled but neither trustProxy nor getClientIp is configured. ' +
+      'All clients will share a single free-tier bucket. Provide trustProxy: true (behind a reverse proxy) ' +
+      'or a getClientIp callback for per-client isolation.',
+    )
+  }
 
   return async (req: Request): Promise<Response> => {
     const url = new URL(req.url)
-    const ip = config.trustProxy
-      ? req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? req.headers.get('x-real-ip') ?? '127.0.0.1'
-      : '127.0.0.1'
+    const ip = config.getClientIp
+      ? config.getClientIp(req)
+      : config.trustProxy
+        ? req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? req.headers.get('x-real-ip') ?? 'unknown'
+        : 'unknown'
     const headers = Object.fromEntries(req.headers.entries())
 
     const result = await engine.handle({
@@ -76,7 +100,7 @@ export function createWebStandardMiddleware(
     })
 
     if (result.action === 'pass' || result.action === 'proxy') {
-      const res = await proxyUpstream(upstreamBase, req)
+      const res = await proxyUpstream(upstreamBase, req, upstreamTimeout)
       const responseHeaders = new Headers(res.headers)
       for (const [key, value] of Object.entries(result.headers)) {
         responseHeaders.set(key, value)

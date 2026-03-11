@@ -67,7 +67,7 @@ examples/
 | `DEFAULT_INVOICE_SATS` | 1000 | Default invoice amount |
 | `DB_PATH` | ./toll-booth.db | SQLite database path |
 | `ROOT_KEY` | — | Macaroon signing key (hex, 64 chars / 32 bytes). **Required for production.** |
-| `ADMIN_TOKEN` | — | Bearer token for `/stats` and `/admin/*` endpoints |
+
 | `TRUST_PROXY` | false | Trust `X-Forwarded-For` / `X-Real-IP` headers |
 | `PORT` | 3000 | HTTP listen port |
 | `LND_REST_URL` | — | LND REST endpoint (integration tests) |

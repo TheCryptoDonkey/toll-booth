@@ -19,6 +19,59 @@ function mockBackend(): LightningBackend {
   }
 }
 
+describe('Hono adapter IP resolution', () => {
+  it('uses getClientIp callback when provided', async () => {
+    const backend = mockBackend()
+    const storage = memoryStorage()
+    const engine = createTollBooth({
+      backend,
+      storage,
+      pricing: { '/route': 10 },
+      upstream: 'http://localhost:8002',
+      rootKey: ROOT_KEY,
+      freeTier: { requestsPerDay: 2 },
+    })
+
+    const app = new Hono()
+    app.use('/route', createHonoMiddleware({
+      engine,
+      upstream: 'http://localhost:8002',
+      getClientIp: () => '1.2.3.4',
+    }))
+
+    // First request should pass (free tier)
+    const res1 = await app.request('/route', { method: 'POST' })
+    // Engine proxies upstream, which isn't running, so expect a non-402 error
+    expect(res1.status).not.toBe(402)
+
+    // Second request for same IP
+    const res2 = await app.request('/route', { method: 'POST' })
+    expect(res2.status).not.toBe(402)
+
+    // Third request should be challenged (free tier exhausted for 1.2.3.4)
+    const res3 = await app.request('/route', { method: 'POST' })
+    expect(res3.status).toBe(402)
+  })
+
+  it('warns when freeTier enabled without trustProxy or getClientIp', () => {
+    const backend = mockBackend()
+    const storage = memoryStorage()
+    const engine = createTollBooth({
+      backend,
+      storage,
+      pricing: { '/route': 10 },
+      upstream: 'http://localhost:8002',
+      rootKey: ROOT_KEY,
+      freeTier: { requestsPerDay: 5 },
+    })
+
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    createHonoMiddleware({ engine, upstream: 'http://localhost:8002' })
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining('freeTier is enabled'))
+    spy.mockRestore()
+  })
+})
+
 describe('Hono adapter', () => {
   it('returns 402 for priced routes without auth', async () => {
     const backend = mockBackend()

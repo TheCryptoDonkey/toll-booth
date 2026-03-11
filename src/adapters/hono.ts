@@ -10,7 +10,7 @@ import { PAYMENT_HASH_RE } from '../core/types.js'
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-async function proxyUpstream(upstream: string, req: Request): Promise<Response> {
+async function proxyUpstream(upstream: string, req: Request, timeoutMs = 30_000): Promise<Response> {
   const url = new URL(req.url)
   const target = `${upstream}${url.pathname}${url.search}`
   const headers = new Headers(req.headers)
@@ -20,7 +20,7 @@ async function proxyUpstream(upstream: string, req: Request): Promise<Response> 
   const init: RequestInit & { duplex?: string } = {
     method: req.method,
     headers,
-    signal: AbortSignal.timeout(30_000),
+    signal: AbortSignal.timeout(timeoutMs),
     duplex: 'half',
   }
 
@@ -39,6 +39,18 @@ export interface HonoMiddlewareConfig {
   upstream: string
   trustProxy?: boolean
   responseHeaders?: Record<string, string>
+  /** Timeout in milliseconds for upstream proxy requests (default: 30000). */
+  upstreamTimeout?: number
+  /**
+   * Custom callback to extract client IP from the request context.
+   * Use this for platform-specific IP resolution (e.g. Cloudflare's
+   * `CF-Connecting-IP`, Deno's `connInfo.remoteAddr`).
+   * When omitted with `trustProxy: false`, the IP defaults to
+   * `'unknown'` — which collapses free-tier to a single bucket.
+   * If `freeTier` is enabled, provide either `trustProxy: true` or
+   * a `getClientIp` callback for per-client isolation.
+   */
+  getClientIp?: (c: Context) => string
 }
 
 /**
@@ -51,12 +63,24 @@ export function createHonoMiddleware(config: HonoMiddlewareConfig): MiddlewareHa
   const upstream = config.upstream.replace(/\/$/, '')
 
   const extraHeaders = config.responseHeaders ?? {}
+  const upstreamTimeout = config.upstreamTimeout ?? 30_000
+
+  // Warn at construction time if free-tier is enabled but no IP resolution configured
+  if (config.engine.freeTier && !config.trustProxy && !config.getClientIp) {
+    console.error(
+      '[toll-booth] Warning: freeTier is enabled but neither trustProxy nor getClientIp is configured. ' +
+      'All clients will share a single free-tier bucket. Provide trustProxy: true (behind a reverse proxy) ' +
+      'or a getClientIp callback for per-client isolation.',
+    )
+  }
 
   return async (c) => {
     const url = new URL(c.req.url)
-    const ip = config.trustProxy
-      ? c.req.header('X-Forwarded-For')?.split(',')[0]?.trim() ?? c.req.header('X-Real-IP') ?? '127.0.0.1'
-      : '127.0.0.1'
+    const ip = config.getClientIp
+      ? config.getClientIp(c)
+      : config.trustProxy
+        ? c.req.header('X-Forwarded-For')?.split(',')[0]?.trim() ?? c.req.header('X-Real-IP') ?? 'unknown'
+        : 'unknown'
     const headers = Object.fromEntries(c.req.raw.headers.entries())
 
     const result = await config.engine.handle({
@@ -68,7 +92,7 @@ export function createHonoMiddleware(config: HonoMiddlewareConfig): MiddlewareHa
     })
 
     if (result.action === 'pass' || result.action === 'proxy') {
-      const res = await proxyUpstream(upstream, c.req.raw)
+      const res = await proxyUpstream(upstream, c.req.raw, upstreamTimeout)
       // Merge engine headers + responseHeaders onto the upstream response
       const merged = new Headers(res.headers)
       for (const [key, value] of Object.entries(result.headers)) {

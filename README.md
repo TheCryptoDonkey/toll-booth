@@ -15,16 +15,16 @@ const app = new Hono()
 const booth = tollBooth({
   backend: phoenixdBackend({ url: 'http://localhost:9740', password: 'your-password' }),
   pricing: {
-    '/route': 2,
-    '/isochrone': 5,
-    '/sources_to_targets': 10,
+    '/api/route': 2,        // must match the mounted paths the middleware sees
+    '/api/isochrone': 5,
+    '/api/sources_to_targets': 10,
   },
   freeTier: { requestsPerDay: 10 },
   upstream: 'http://localhost:8002',
   rootKey: process.env.ROOT_KEY, // 32-byte hex key
   dbPath: './toll-booth.db',
   trustProxy: true, // only behind a trusted reverse proxy that sets client IP headers
-  adminToken: process.env.ADMIN_TOKEN, // protects /stats and /admin/reset-free-tier
+  strictPricing: true, // reject unpriced routes with 402 instead of passing them through
 })
 
 app.use('/api/*', booth)
@@ -68,8 +68,10 @@ Each IP address gets a configurable number of free requests per day — no signu
 
 - Set a persistent `rootKey` (32-byte hex), otherwise tokens are invalidated on restart.
 - Use a persistent `dbPath` (default: `./toll-booth.db`).
+- Enable `strictPricing: true` to prevent unpriced routes from bypassing billing.
+- Ensure your `pricing` keys match the paths the middleware actually sees (after mounting).
+- Set `trustProxy: true` when behind a reverse proxy, or provide a `getClientIp` callback for per-client free-tier isolation.
 - Upgrade/patch dependencies regularly (`npm audit`).
-- If you expose `/stats` or `/admin/reset-free-tier`, set `adminToken` (or use `trustProxy: true` with strict loopback-only proxy rules).
 
 ## Backends
 
@@ -79,7 +81,7 @@ Each IP address gets a configurable number of free requests per day — no signu
 | LND        | Implemented | Industry standard |
 | CLN        | Implemented | Core Lightning REST API |
 | LNbits     | Implemented | Any LNbits instance — self-hosted or hosted |
-| Alby (NWC) | Implemented | Nostr Wallet Connect |
+| Alby (NWC) | Experimental | Nostr Wallet Connect — `checkInvoice()` cannot observe payment state; use for dev/testing only |
 
 ## Reference deployment
 

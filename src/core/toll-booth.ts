@@ -23,12 +23,15 @@ export function createTollBooth(config: TollBoothCoreConfig): TollBoothEngine {
     async handle(req: TollBoothRequest): Promise<TollBoothResult> {
       const start = Date.now()
       const path = req.path
-      const cost = config.pricing[path]
+      const pricedCost = config.pricing[path]
 
-      // Unpriced routes pass straight through
-      if (cost === undefined) {
+      // Unpriced routes: pass through unless strictPricing is enabled
+      if (pricedCost === undefined && !config.strictPricing) {
         return { action: 'pass', upstream, headers: {} }
       }
+
+      // Effective cost: explicit pricing, or defaultInvoiceAmount when strictPricing
+      const cost = pricedCost ?? defaultAmount
 
       // Check for L402 Authorisation header
       const authHeader = req.headers['authorization'] ?? req.headers['Authorization']

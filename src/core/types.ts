@@ -25,6 +25,7 @@ export interface TollBoothCoreConfig {
   pricing: Record<string, number>
   upstream: string
   defaultInvoiceAmount?: number
+  strictPricing?: boolean
   rootKey: string
   freeTier?: { requestsPerDay: number }
   creditTiers?: CreditTier[]
