@@ -64,8 +64,9 @@ describe('Hono adapter E2E with HTTP round-trip', () => {
       const challengeRes = await fetch(`${base}/api/data`)
       expect(challengeRes.status).toBe(402)
       const challenge = await challengeRes.json() as Record<string, unknown>
-      expect(challenge).toHaveProperty('payment_hash')
-      expect(challenge).toHaveProperty('macaroon')
+      const challengeL402 = (challenge as any).l402
+      expect(challengeL402).toHaveProperty('payment_hash')
+      expect(challengeL402).toHaveProperty('macaroon')
       expect(challengeRes.headers.get('www-authenticate')).toMatch(/^L402 macaroon="/)
 
       // Step 2: Create invoice via payment route

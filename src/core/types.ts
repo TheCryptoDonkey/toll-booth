@@ -1,6 +1,7 @@
 // src/core/types.ts
 import type { LightningBackend, CreditTier, PaymentEvent, RequestEvent, ChallengeEvent } from '../types.js'
 import type { StorageBackend, StoredInvoice } from '../storage/interface.js'
+import type { PaymentRail, PriceInfo } from './payment-rail.js'
 
 /** Matches a valid 64-char lowercase hex payment hash. */
 export const PAYMENT_HASH_RE = /^[0-9a-f]{64}$/
@@ -15,7 +16,7 @@ export interface TollBoothRequest {
 
 export type TollBoothResult =
   | { action: 'proxy'; upstream: string; headers: Record<string, string>; paymentHash?: string; estimatedCost?: number; creditBalance?: number; freeRemaining?: number }
-  | { action: 'challenge'; status: 402; headers: Record<string, string>; body: Record<string, unknown> }
+  | { action: 'challenge'; status: 401 | 402; headers: Record<string, string>; body: Record<string, unknown> }
   | { action: 'pass'; upstream: string; headers: Record<string, string> }
 
 export interface ReconcileResult {
@@ -35,6 +36,8 @@ export interface TollBoothCoreConfig {
   rootKey: string
   freeTier?: { requestsPerDay: number }
   creditTiers?: CreditTier[]
+  rails?: PaymentRail[]
+  normalisedPricing?: Record<string, PriceInfo>
   onPayment?: (event: PaymentEvent) => void
   onRequest?: (event: RequestEvent) => void
   onChallenge?: (event: ChallengeEvent) => void

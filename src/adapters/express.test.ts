@@ -82,10 +82,11 @@ describe('Express adapter', () => {
     expect(res.headers.get('cache-control')).toBe('no-store')
 
     const body = await res.json()
-    expect(body).toHaveProperty('invoice')
-    expect(body).toHaveProperty('macaroon')
-    expect(body).toHaveProperty('payment_hash')
-    expect(body).toHaveProperty('error', 'Payment required')
+    const l402 = (body as any).l402
+    expect(l402).toHaveProperty('invoice')
+    expect(l402).toHaveProperty('macaroon')
+    expect(l402).toHaveProperty('payment_hash')
+    expect(body).toHaveProperty('message', 'Payment required.')
   })
 
   it('creates invoice via handler', async () => {

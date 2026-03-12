@@ -205,12 +205,12 @@ export async function startDemo(): Promise<void> {
             // Print QR code to terminal on 402 so devs can scan with a wallet
             if (response.status === 402) {
               const cloned = response.clone()
-              const body = await cloned.json() as { payment_url?: string }
+              const body = await cloned.json() as { l402?: { payment_url?: string } }
               console.log('')
               console.log(`  ${YELLOW}This is a demo - the mock payment will auto-settle in ~1s.${RESET}`)
               console.log(`  ${DIM}Wait a moment, then check the terminal for your curl command.${RESET}`)
-              if (body.payment_url) {
-                console.log(`  ${DIM}Payment page: http://localhost:${port}${body.payment_url}${RESET}`)
+              if (body.l402?.payment_url) {
+                console.log(`  ${DIM}Payment page: http://localhost:${port}${body.l402.payment_url}${RESET}`)
               }
               console.log('')
             }

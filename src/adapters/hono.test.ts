@@ -77,9 +77,10 @@ describe('createHonoTollBooth', () => {
 
     expect(res.status).toBe(402)
     const body = await res.json() as Record<string, unknown>
-    expect(body).toHaveProperty('payment_hash')
-    expect(body).toHaveProperty('macaroon')
-    expect(body.error).toBe('Payment required')
+    const l402 = (body as any).l402
+    expect(l402).toHaveProperty('payment_hash')
+    expect(l402).toHaveProperty('macaroon')
+    expect(body.message).toBe('Payment required.')
     expect(res.headers.get('www-authenticate')).toMatch(/^L402 macaroon="/)
   })
 
@@ -150,7 +151,7 @@ describe('createHonoTollBooth', () => {
 
     expect(res.status).toBe(402)
     const body = await res.json() as Record<string, unknown>
-    expect(body.error).toBe('Payment required')
+    expect(body.message).toBe('Payment required.')
   })
 })
 
@@ -270,8 +271,9 @@ describe('Hono adapter integration', () => {
     const unauthRes = await app.request('/api/test')
     expect(unauthRes.status).toBe(402)
     const challenge = await unauthRes.json() as Record<string, unknown>
-    expect(challenge).toHaveProperty('payment_hash')
-    expect(challenge).toHaveProperty('macaroon')
+    const challengeL402 = (challenge as any).l402
+    expect(challengeL402).toHaveProperty('payment_hash')
+    expect(challengeL402).toHaveProperty('macaroon')
 
     // Step 2: Create invoice via payment route
     const createRes = await app.request('/create-invoice', {

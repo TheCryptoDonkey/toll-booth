@@ -87,21 +87,25 @@ describe.skipIf(!RUN_INTEGRATION)('Cashu-only mode integration (requires Nutshel
     expect(res.status).toBe(402)
 
     const body = await res.json() as Record<string, unknown>
-    expect(body.payment_hash).toMatch(/^[0-9a-f]{64}$/)
-    expect(body.macaroon).toBeTruthy()
-    expect(body).not.toHaveProperty('invoice')
+    const l402 = body.l402 as Record<string, unknown>
+    expect(l402.payment_hash).toMatch(/^[0-9a-f]{64}$/)
+    expect(l402.macaroon).toBeTruthy()
+    expect(l402.invoice).toBe('')
   })
 
   it('full Cashu-only flow: 402 → mint tokens → redeem → authorise', async () => {
     // 1. Trigger a 402 to get a payment hash + macaroon
     const challengeRes = await request('/api/data')
     expect(challengeRes.status).toBe(402)
-    const challenge = await challengeRes.json() as {
-      payment_hash: string
-      macaroon: string
-      amount_sats: number
-      payment_url: string
+    const challengeBody = await challengeRes.json() as {
+      l402: {
+        payment_hash: string
+        macaroon: string
+        amount_sats: number
+        payment_url: string
+      }
     }
+    const challenge = challengeBody.l402
     const statusToken = extractStatusToken(challenge.payment_url)
 
     // 2. Mint Cashu proofs for the invoice amount
@@ -135,11 +139,14 @@ describe.skipIf(!RUN_INTEGRATION)('Cashu-only mode integration (requires Nutshel
   it('invoice-status reflects settlement without Lightning backend', async () => {
     // 1. Get a challenge
     const challengeRes = await request('/api/data')
-    const challenge = await challengeRes.json() as {
-      payment_hash: string
-      amount_sats: number
-      payment_url: string
+    const challengeBody2 = await challengeRes.json() as {
+      l402: {
+        payment_hash: string
+        amount_sats: number
+        payment_url: string
+      }
     }
+    const challenge = challengeBody2.l402
     const statusToken = extractStatusToken(challenge.payment_url)
 
     // 2. Check status before payment — should be unpaid

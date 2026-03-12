@@ -219,8 +219,8 @@ describe('Booth', () => {
     expect(res.status).toBe(402)
 
     const body = await res.json()
-    expect(body.payment_url).toMatch(new RegExp(`^/invoice-status/${paymentHash}\\?token=[0-9a-f]{64}$`))
-    expect(body.payment_hash).toBe(paymentHash)
+    expect(body.l402.payment_url).toMatch(new RegExp(`^/invoice-status/${paymentHash}\\?token=[0-9a-f]{32}$`))
+    expect(body.l402.payment_hash).toBe(paymentHash)
 
     booth.close()
   })
@@ -233,7 +233,7 @@ describe('Booth', () => {
     const challengeBody = await challenge.json()
 
     // Now request the payment page
-    const res = await request(challengeBody.payment_url, {
+    const res = await request(challengeBody.l402.payment_url, {
       headers: { 'Accept': 'text/html' },
     })
 
@@ -256,7 +256,7 @@ describe('Booth', () => {
     const challenge = await request('/route', { method: 'POST' })
     const challengeBody = await challenge.json()
 
-    const res = await request(challengeBody.payment_url, {
+    const res = await request(challengeBody.l402.payment_url, {
       headers: { 'Accept': 'application/json' },
     })
 
@@ -327,7 +327,7 @@ describe('Booth', () => {
 
       const challengeRes = await request('/route', { method: 'POST' })
       const challengeBody = await challengeRes.json()
-      const statusToken = extractStatusToken(challengeBody.payment_url)
+      const statusToken = extractStatusToken(challengeBody.l402.payment_url)
 
       const res = await request('/nwc-pay', {
         method: 'POST',
@@ -363,7 +363,7 @@ describe('Booth', () => {
       // Trigger a 402 to store the invoice for this paymentHash
       const challengeRes = await request('/route', { method: 'POST' })
       const challengeBody = await challengeRes.json()
-      const statusToken = extractStatusToken(challengeBody.payment_url)
+      const statusToken = extractStatusToken(challengeBody.l402.payment_url)
 
       const res = await request('/cashu-redeem', {
         method: 'POST',
@@ -388,7 +388,7 @@ describe('Booth', () => {
       // Trigger a 402 to store the invoice
       const challengeRes = await request('/route', { method: 'POST' })
       const challengeBody = await challengeRes.json()
-      const statusToken = extractStatusToken(challengeBody.payment_url)
+      const statusToken = extractStatusToken(challengeBody.l402.payment_url)
 
       // First redemption
       await request('/cashu-redeem', {
@@ -419,7 +419,7 @@ describe('Booth', () => {
       // Trigger a 402 to store the invoice
       const challengeRes = await request('/route', { method: 'POST' })
       const challengeBody = await challengeRes.json()
-      const statusToken = extractStatusToken(challengeBody.payment_url)
+      const statusToken = extractStatusToken(challengeBody.l402.payment_url)
 
       const makeOpts = () => ({
         method: 'POST' as const,
@@ -455,8 +455,8 @@ describe('Booth', () => {
       // Trigger a 402 to store the invoice
       const challengeRes = await request('/route', { method: 'POST' })
       const challengeBody = await challengeRes.json()
-      const macaroon = challengeBody.macaroon
-      const statusToken = extractStatusToken(challengeBody.payment_url)
+      const macaroon = challengeBody.l402.macaroon
+      const statusToken = extractStatusToken(challengeBody.l402.payment_url)
 
       // Redeem Cashu token
       const redeemRes = await request('/cashu-redeem', {
@@ -697,7 +697,7 @@ describe('Booth', () => {
       // Store the invoice
       const challengeRes = await request('/route', { method: 'POST' })
       const challengeBody = await challengeRes.json()
-      const statusToken = extractStatusToken(challengeBody.payment_url)
+      const statusToken = extractStatusToken(challengeBody.l402.payment_url)
 
       const res = await request('/cashu-redeem', {
         method: 'POST',
@@ -724,7 +724,7 @@ describe('Booth', () => {
         // Store the invoice
         const challengeRes = await request('/route', { method: 'POST' })
         const challengeBody = await challengeRes.json()
-        const statusToken = extractStatusToken(challengeBody.payment_url)
+        const statusToken = extractStatusToken(challengeBody.l402.payment_url)
 
         // First attempt — mint fails, claim is pending with active lease
         const res1 = await request('/cashu-redeem', {
@@ -764,7 +764,7 @@ describe('Booth', () => {
         // Store the invoice
         const challengeRes = await request('/route', { method: 'POST' })
         const challengeBody = await challengeRes.json()
-        const statusToken = extractStatusToken(challengeBody.payment_url)
+        const statusToken = extractStatusToken(challengeBody.l402.payment_url)
 
         // First attempt — fails
         const res1 = await request('/cashu-redeem', {
@@ -805,7 +805,7 @@ describe('Booth', () => {
         // Store the invoice
         const challengeRes = await request('/route', { method: 'POST' })
         const challengeBody = await challengeRes.json()
-        const statusToken = extractStatusToken(challengeBody.payment_url)
+        const statusToken = extractStatusToken(challengeBody.l402.payment_url)
 
         // Initial attempt fails — claim with lease
         await request('/cashu-redeem', {
@@ -852,7 +852,7 @@ describe('Booth', () => {
         // Store the invoice
         const challengeRes = await request('/route', { method: 'POST' })
         const challengeBody = await challengeRes.json()
-        const statusToken = extractStatusToken(challengeBody.payment_url)
+        const statusToken = extractStatusToken(challengeBody.l402.payment_url)
 
         const opts = {
           method: 'POST' as const,
@@ -950,9 +950,9 @@ describe('Booth', () => {
       const res = await middleware(new Request('http://localhost/route', { method: 'POST' }))
       expect(res.status).toBe(402)
       const body = await res.json()
-      expect(body.payment_hash).toMatch(/^[0-9a-f]{64}$/)
-      expect(body.macaroon).toBeTruthy()
-      expect(body).not.toHaveProperty('invoice')
+      expect(body.l402.payment_hash).toMatch(/^[0-9a-f]{64}$/)
+      expect(body.l402.macaroon).toBeTruthy()
+      expect(body.l402.invoice).toBe('')
 
       booth.close()
     })
@@ -965,10 +965,10 @@ describe('Booth', () => {
     const res1 = await request('/route', { method: 'POST' })
     expect(res1.status).toBe(402)
     const body1 = await res1.json()
-    expect(body1.payment_url).toBeTruthy()
+    expect(body1.l402.payment_url).toBeTruthy()
 
     // 2. Visit payment page (HTML)
-    const res2 = await request(body1.payment_url, {
+    const res2 = await request(body1.l402.payment_url, {
       headers: { 'Accept': 'text/html' },
     })
     expect(res2.status).toBe(200)
@@ -984,7 +984,7 @@ describe('Booth', () => {
     expect(res3.status).toBe(200)
 
     // 4. Check JSON status
-    const res4 = await request(body1.payment_url)
+    const res4 = await request(body1.l402.payment_url)
     expect(res4.status).toBe(200)
     const body4 = await res4.json()
     expect(body4.paid).toBe(false)
@@ -992,7 +992,7 @@ describe('Booth', () => {
     // 5. Simulate payment completion
     vi.mocked(backend.checkInvoice).mockResolvedValue({ paid: true, preimage })
 
-    const res5 = await request(body1.payment_url, {
+    const res5 = await request(body1.l402.payment_url, {
       headers: { 'Accept': 'text/html' },
     })
     const html5 = await res5.text()

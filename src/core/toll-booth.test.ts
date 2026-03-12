@@ -61,9 +61,10 @@ describe('TollBoothEngine (core)', () => {
     if (result.action === 'challenge') {
       expect(result.status).toBe(402)
       expect(result.headers['WWW-Authenticate']).toMatch(/^L402 /)
-      expect(result.body).toHaveProperty('invoice')
-      expect(result.body).toHaveProperty('macaroon')
-      expect(result.body).toHaveProperty('payment_hash')
+      const l402 = result.body.l402 as Record<string, unknown>
+      expect(l402).toHaveProperty('invoice')
+      expect(l402).toHaveProperty('macaroon')
+      expect(l402).toHaveProperty('payment_hash')
     }
   })
 
@@ -446,12 +447,11 @@ describe('Cashu-only mode (no Lightning backend)', () => {
     if (result.action === 'challenge') {
       expect(result.status).toBe(402)
       expect(result.headers['WWW-Authenticate']).toMatch(/^L402 macaroon="/)
-      // No invoice in the WWW-Authenticate header
-      expect(result.headers['WWW-Authenticate']).not.toContain('invoice=')
-      // Body has payment_hash but no invoice
-      expect(result.body.payment_hash).toMatch(/^[0-9a-f]{64}$/)
-      expect(result.body).not.toHaveProperty('invoice')
-      expect(result.body).toHaveProperty('macaroon')
+      // Body has l402.payment_hash but empty invoice
+      const l402 = result.body.l402 as Record<string, unknown>
+      expect(l402.payment_hash).toMatch(/^[0-9a-f]{64}$/)
+      expect(l402.invoice).toBe('')
+      expect(l402).toHaveProperty('macaroon')
     }
   })
 
@@ -464,8 +464,9 @@ describe('Cashu-only mode (no Lightning backend)', () => {
     expect(challenge.action).toBe('challenge')
     if (challenge.action !== 'challenge') return
 
-    const paymentHash = challenge.body.payment_hash as string
-    const macaroon = challenge.body.macaroon as string
+    const l402 = challenge.body.l402 as Record<string, unknown>
+    const paymentHash = l402.payment_hash as string
+    const macaroon = l402.macaroon as string
 
     // Simulate Cashu redemption: settle + credit with a secret suffix.
     const settlementSecret = 'cashu-settlement-secret'
@@ -488,7 +489,9 @@ describe('Cashu-only mode (no Lightning backend)', () => {
     const r2 = await engine.handle(makeRequest())
 
     if (r1.action === 'challenge' && r2.action === 'challenge') {
-      expect(r1.body.payment_hash).not.toBe(r2.body.payment_hash)
+      const l402_1 = r1.body.l402 as Record<string, unknown>
+      const l402_2 = r2.body.l402 as Record<string, unknown>
+      expect(l402_1.payment_hash).not.toBe(l402_2.payment_hash)
     }
   })
 })

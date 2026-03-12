@@ -182,11 +182,12 @@ describe('demo server', () => {
     const res3 = await fetch(`http://localhost:${port}/api/joke`)
     expect(res3.status).toBe(402)
     const body = await readJson(res3)
-    expect(body).toHaveProperty('macaroon')
-    expect(body).toHaveProperty('invoice')
-    expect(body).toHaveProperty('payment_hash')
-    expect(body).toHaveProperty('payment_url')
-    expect(body.amount_sats).toBe(10)
+    const l402 = (body as any).l402
+    expect(l402).toHaveProperty('macaroon')
+    expect(l402).toHaveProperty('invoice')
+    expect(l402).toHaveProperty('payment_hash')
+    expect(l402).toHaveProperty('payment_url')
+    expect(l402.amount_sats).toBe(10)
   })
 
   it('accepts L402 authorisation after payment', async () => {

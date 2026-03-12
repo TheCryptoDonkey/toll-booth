@@ -1,8 +1,9 @@
 // src/core/toll-booth.ts
-import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
-import { mintMacaroon, verifyMacaroon, type VerifyContext } from '../macaroon.js'
+import { randomBytes } from 'node:crypto'
 import { FreeTier } from '../free-tier.js'
-import type { StorageBackend } from '../storage/interface.js'
+import { createL402Rail } from './l402-rail.js'
+import { normalisePricingTable } from './payment-rail.js'
+import type { Currency } from './payment-rail.js'
 import type { TollBoothRequest, TollBoothResult, TollBoothCoreConfig, ReconcileResult } from './types.js'
 
 export interface TollBoothEngine {
@@ -16,13 +17,22 @@ export function createTollBooth(config: TollBoothCoreConfig): TollBoothEngine {
   const defaultAmount = config.defaultInvoiceAmount ?? 1000
   const upstream = config.upstream.replace(/\/$/, '')
   const freeTier = config.freeTier ? new FreeTier(config.freeTier.requestsPerDay) : null
+  const storage = config.storage
 
-  // In-memory map is intentional: reconcile() is always called within the same request-response
-  // cycle by the adapter, so persistence is not needed. Entries are evicted after MAX_AGE_MS
-  // to prevent unbounded growth when reconcile() is never called.
+  // Auto-create L402Rail when rails not explicitly provided (backward compat)
+  const rails = config.rails ?? [
+    createL402Rail({
+      rootKey: config.rootKey,
+      storage,
+      defaultAmount,
+      backend: config.backend,
+    }),
+  ]
+  const normalisedPricing = config.normalisedPricing ?? normalisePricingTable(config.pricing ?? {})
+
   const MAX_ESTIMATED_COSTS = 10_000
   const MAX_AGE_MS = 60_000
-  const estimatedCosts = new Map<string, { cost: number; ts: number }>()
+  const estimatedCosts = new Map<string, { cost: number; ts: number; currency: Currency }>()
 
   return {
     freeTier,
@@ -41,57 +51,86 @@ export function createTollBooth(config: TollBoothCoreConfig): TollBoothEngine {
       // Effective cost: explicit pricing, or defaultInvoiceAmount when strictPricing
       const cost = pricedCost ?? defaultAmount
 
-      // Check for L402 Authorisation header
-      const authHeader = req.headers['authorization'] ?? req.headers['Authorization']
-      if (authHeader?.startsWith('L402 ')) {
-        const result = handleL402Auth(authHeader, config.rootKey, config.storage, cost, defaultAmount, path, req.ip)
-        if (result.authorised) {
-          if (result.creditedAmount) {
-            config.onPayment?.({
-              timestamp: new Date().toISOString(),
-              paymentHash: result.paymentHash!,
-              amountSats: result.creditedAmount,
-            })
-          }
-          config.onRequest?.({
-            timestamp: new Date().toISOString(),
-            endpoint: path,
-            satsDeducted: cost,
-            remainingBalance: result.remaining,
-            latencyMs: Date.now() - start,
-            authenticated: true,
-            clientIp: req.ip,
-          })
-          // Evict stale entries to prevent unbounded growth
-          if (estimatedCosts.size >= MAX_ESTIMATED_COSTS) {
-            const now = Date.now()
-            for (const [key, entry] of estimatedCosts) {
-              if (now - entry.ts > MAX_AGE_MS) estimatedCosts.delete(key)
-            }
-          }
-          estimatedCosts.set(result.paymentHash!, { cost, ts: Date.now() })
-          const headers: Record<string, string> = { 'X-Credit-Balance': String(result.remaining) }
-          if (result.customCaveats) {
-            for (const [key, value] of Object.entries(result.customCaveats)) {
-              // Only forward caveats with safe alphanumeric/underscore keys to prevent header injection
-              if (/^[a-zA-Z0-9_]+$/.test(key)) {
-                headers[`X-Toll-Caveat-${key.charAt(0).toUpperCase() + key.slice(1)}`] = value.replace(/[\r\n]/g, '')
+      // Try each rail
+      for (const rail of rails) {
+        if (rail.detect(req)) {
+          const result = await Promise.resolve(rail.verify(req))
+
+          if (result.authenticated) {
+            // Engine handles debit for credit mode
+            if (result.mode === 'credit' && result.paymentId && cost > 0) {
+              const debit = storage.debit(result.paymentId, cost)
+              if (!debit.success) {
+                // Insufficient balance — fall through to challenge
+                break
               }
             }
+
+            const remaining = result.mode === 'credit'
+              ? storage.balance(result.paymentId)
+              : undefined
+
+            // Fire onPayment exactly once per paymentHash (first time seen)
+            if (result.paymentId && !estimatedCosts.has(result.paymentId)) {
+              const creditedAmount = (remaining ?? 0) + cost
+              config.onPayment?.({
+                timestamp: new Date().toISOString(),
+                paymentHash: result.paymentId,
+                amountSats: creditedAmount,
+              })
+            }
+
+            // Track estimated cost with currency for reconciliation
+            if (result.paymentId) {
+              // Evict stale entries
+              if (estimatedCosts.size >= MAX_ESTIMATED_COSTS) {
+                const now = Date.now()
+                for (const [key, entry] of estimatedCosts) {
+                  if (now - entry.ts > MAX_AGE_MS) estimatedCosts.delete(key)
+                }
+              }
+              estimatedCosts.set(result.paymentId, { cost, ts: Date.now(), currency: result.currency })
+            }
+
+            // Build response headers
+            const headers: Record<string, string> = {}
+            if (remaining !== undefined) {
+              headers['X-Credit-Balance'] = String(remaining)
+            }
+            if (result.customCaveats) {
+              for (const [key, value] of Object.entries(result.customCaveats)) {
+                if (/^[a-zA-Z0-9_]+$/.test(key)) {
+                  headers[`X-Toll-Caveat-${key.charAt(0).toUpperCase() + key.slice(1)}`] = value.replace(/[\r\n]/g, '')
+                }
+              }
+            }
+
+            config.onRequest?.({
+              timestamp: new Date().toISOString(),
+              endpoint: path,
+              satsDeducted: cost,
+              remainingBalance: remaining ?? 0,
+              latencyMs: Date.now() - start,
+              authenticated: true,
+              clientIp: req.ip,
+            })
+
+            return {
+              action: 'proxy',
+              upstream,
+              headers,
+              paymentHash: result.paymentId,
+              estimatedCost: cost,
+              creditBalance: remaining,
+            }
           }
-          return {
-            action: 'proxy',
-            upstream,
-            headers,
-            creditBalance: result.remaining,
-            paymentHash: result.paymentHash,
-            estimatedCost: cost,
-          }
+
+          // Rail detected credentials but verification failed — fall through to challenge
+          break
         }
-        // Fall through to issue a new challenge if authorisation failed
       }
 
-      // Check free tier
+      // No rail authenticated — check free tier
       if (freeTier) {
         const check = freeTier.check(req.ip)
         if (check.allowed) {
@@ -113,27 +152,37 @@ export function createTollBooth(config: TollBoothCoreConfig): TollBoothEngine {
         }
       }
 
-      // Issue L402 challenge
-      let paymentHash: string
-      let bolt11: string | undefined
+      // Issue multi-rail challenge
+      const challengeHeaders: Record<string, string> = {}
+      const challengeBody: Record<string, unknown> = {}
 
-      if (config.backend) {
-        const invoice = await config.backend.createInvoice(
-          defaultAmount,
-          `toll-booth: ${defaultAmount} sats credit`,
-        )
-        paymentHash = invoice.paymentHash
-        bolt11 = invoice.bolt11
-      } else {
-        // Cashu-only mode: synthetic payment hash (no Lightning invoice)
-        paymentHash = randomBytes(32).toString('hex')
+      const normalisedPrice = normalisedPricing[req.path] ?? { sats: defaultAmount }
+
+      for (const rail of rails) {
+        if (rail.canChallenge && !rail.canChallenge(normalisedPrice)) continue
+        const fragment = await rail.challenge(req.path, normalisedPrice)
+        Object.assign(challengeHeaders, fragment.headers)
+        Object.assign(challengeBody, fragment.body)
       }
 
-      const macaroon = mintMacaroon(config.rootKey, paymentHash, defaultAmount)
-      const statusToken = randomBytes(32).toString('hex')
+      challengeBody.message = 'Payment required.'
 
-      // Store invoice for payment page (bolt11 is empty in Cashu-only mode)
-      config.storage.storeInvoice(paymentHash, bolt11 ?? '', defaultAmount, macaroon, statusToken, req.ip)
+      // Store invoice data from L402 rail if present
+      const l402Data = challengeBody.l402 as Record<string, unknown> | undefined
+      if (l402Data?.payment_hash) {
+        const paymentHash = l402Data.payment_hash as string
+        const statusToken = randomBytes(16).toString('hex')
+        storage.storeInvoice(
+          paymentHash,
+          (l402Data.invoice as string) ?? '',
+          defaultAmount,
+          l402Data.macaroon as string,
+          statusToken,
+          req.ip,
+        )
+        l402Data.payment_url = `/invoice-status/${paymentHash}?token=${statusToken}`
+        l402Data.status_token = statusToken
+      }
 
       config.onChallenge?.({
         timestamp: new Date().toISOString(),
@@ -142,37 +191,19 @@ export function createTollBooth(config: TollBoothCoreConfig): TollBoothEngine {
         clientIp: req.ip,
       })
 
-      const headers: Record<string, string> = bolt11
-        ? { 'WWW-Authenticate': `L402 macaroon="${macaroon}", invoice="${bolt11}"`, 'X-Powered-By': 'toll-booth' }
-        : { 'WWW-Authenticate': `L402 macaroon="${macaroon}"`, 'X-Powered-By': 'toll-booth' }
-
-      const body: Record<string, unknown> = {
-        error: 'Payment required',
-        macaroon,
-        payment_hash: paymentHash,
-        payment_url: `/invoice-status/${paymentHash}?token=${statusToken}`,
-        amount_sats: defaultAmount,
-      }
-      if (bolt11) body.invoice = bolt11
-
-      return {
-        action: 'challenge',
-        status: 402,
-        headers,
-        body,
-      }
+      return { action: 'challenge', status: 402, headers: challengeHeaders, body: challengeBody }
     },
 
     reconcile(paymentHash: string, actualCost: number): ReconcileResult {
       const entry = estimatedCosts.get(paymentHash)
       if (entry === undefined) {
-        return { adjusted: false, newBalance: config.storage.balance(paymentHash), delta: 0 }
+        return { adjusted: false, newBalance: storage.balance(paymentHash), delta: 0 }
       }
       const delta = entry.cost - actualCost
       if (delta === 0) {
-        return { adjusted: false, newBalance: config.storage.balance(paymentHash), delta: 0 }
+        return { adjusted: false, newBalance: storage.balance(paymentHash), delta: 0 }
       }
-      const newBalance = config.storage.adjustCredits(paymentHash, delta)
+      const newBalance = storage.adjustCredits(paymentHash, delta)
       if (delta < 0) {
         console.warn(`[toll-booth] Reconciliation: additional charge of ${-delta} sats for ${paymentHash}, new balance ${newBalance}`)
       }
@@ -180,74 +211,4 @@ export function createTollBooth(config: TollBoothCoreConfig): TollBoothEngine {
       return { adjusted: true, newBalance, delta }
     },
   }
-}
-
-function handleL402Auth(
-  authHeader: string,
-  rootKey: string,
-  storage: StorageBackend,
-  cost: number,
-  defaultAmount: number,
-  path: string,
-  ip: string,
-): { authorised: boolean; remaining: number; paymentHash?: string; creditedAmount?: number; customCaveats?: Record<string, string> } {
-  try {
-    const token = authHeader.slice(5) // Remove "L402 "
-    const colonIdx = token.lastIndexOf(':')
-    if (colonIdx === -1) return { authorised: false, remaining: 0 }
-
-    const macaroonBase64 = token.slice(0, colonIdx)
-    const preimage = token.slice(colonIdx + 1)
-
-    const context: VerifyContext = { path, ip }
-    const result = verifyMacaroon(rootKey, macaroonBase64, context)
-    if (!result.valid || !result.paymentHash) return { authorised: false, remaining: 0 }
-
-    // Verify suffix proof:
-    // - Lightning path: suffix is the real preimage (sha256(preimage) == payment hash)
-    // - Cashu path: suffix matches the settlement secret stored at redemption time
-    const settlementSecret = storage.getSettlementSecret(result.paymentHash)
-    const hasValidLightningPreimage = isValidLightningPreimage(preimage, result.paymentHash)
-    const hasValidSettlementSecret = settlementSecret !== undefined
-      && preimage.length === settlementSecret.length
-      && timingSafeEqual(Buffer.from(preimage), Buffer.from(settlementSecret))
-
-    if (!hasValidLightningPreimage && !hasValidSettlementSecret) {
-      return { authorised: false, remaining: 0 }
-    }
-
-    // Check if this payment hash has already been settled (Lightning or Cashu)
-    const alreadySettled = storage.isSettled(result.paymentHash)
-
-    let creditedAmount: number | undefined
-    if (!alreadySettled) {
-      // First-time settlement must be proven with a real preimage hash match.
-      if (!hasValidLightningPreimage) return { authorised: false, remaining: 0 }
-
-      // Atomically settle and credit (handles concurrent requests, crash-safe).
-      // Store the preimage as settlement secret so subsequent requests can verify
-      // via either sha256(preimage)==hash or direct secret comparison.
-      const amount = result.creditBalance ?? defaultAmount
-      if (storage.settleWithCredit(result.paymentHash, amount, preimage)) {
-        creditedAmount = amount
-      }
-    }
-
-    // Debit credit for this request
-    const debit = storage.debit(result.paymentHash, cost)
-    if (!debit.success) return { authorised: false, remaining: debit.remaining }
-
-    return { authorised: true, remaining: debit.remaining, paymentHash: result.paymentHash, creditedAmount, customCaveats: result.customCaveats }
-  } catch (err) {
-    console.error('[toll-booth] L402 auth error:', err instanceof Error ? err.message : err)
-    return { authorised: false, remaining: 0 }
-  }
-}
-
-function isValidLightningPreimage(preimage: string, paymentHash: string): boolean {
-  if (!/^[0-9a-f]{64}$/.test(preimage)) return false
-  const computedHash = createHash('sha256')
-    .update(Buffer.from(preimage, 'hex'))
-    .digest()
-  return timingSafeEqual(computedHash, Buffer.from(paymentHash, 'hex'))
 }
