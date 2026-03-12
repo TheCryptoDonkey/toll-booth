@@ -260,6 +260,88 @@ describe('TollBoothEngine (core)', () => {
     const result = await engine.handle(req)
     expect(result.action).toBe('proxy')
   })
+
+  it('proxy result includes paymentHash and estimatedCost', async () => {
+    const { preimage, paymentHash } = makePreimageAndHash()
+    const storage = memoryStorage()
+    const engine = createTollBooth(makeConfig({ storage }))
+
+    const macaroon = mintMacaroon(ROOT_KEY, paymentHash, 1000)
+    const result = await engine.handle(makeRequest({
+      headers: { authorization: `L402 ${macaroon}:${preimage}` },
+    }))
+
+    expect(result.action).toBe('proxy')
+    if (result.action === 'proxy') {
+      expect(result.paymentHash).toBe(paymentHash)
+      expect(result.estimatedCost).toBe(10)
+    }
+  })
+})
+
+describe('reconcile', () => {
+  it('refunds when actual cost is less than estimated', async () => {
+    const { preimage, paymentHash } = makePreimageAndHash()
+    const storage = memoryStorage()
+    const engine = createTollBooth(makeConfig({ storage, pricing: { '/route': 100 } }))
+
+    const macaroon = mintMacaroon(ROOT_KEY, paymentHash, 1000)
+    const req = makeRequest({ headers: { authorization: `L402 ${macaroon}:${preimage}` } })
+
+    await engine.handle(req)
+
+    const result = engine.reconcile(paymentHash, 30)
+    expect(result.adjusted).toBe(true)
+    expect(result.delta).toBe(70)
+    expect(result.newBalance).toBe(970)
+  })
+
+  it('charges more when actual cost exceeds estimate', async () => {
+    const { preimage, paymentHash } = makePreimageAndHash()
+    const storage = memoryStorage()
+    const engine = createTollBooth(makeConfig({ storage, pricing: { '/route': 10 } }))
+
+    const macaroon = mintMacaroon(ROOT_KEY, paymentHash, 1000)
+    const req = makeRequest({ headers: { authorization: `L402 ${macaroon}:${preimage}` } })
+
+    await engine.handle(req)
+
+    const result = engine.reconcile(paymentHash, 50)
+    expect(result.adjusted).toBe(true)
+    expect(result.delta).toBe(-40)
+    expect(result.newBalance).toBe(950)
+  })
+
+  it('clamps to zero on over-charge', async () => {
+    const { preimage, paymentHash } = makePreimageAndHash()
+    const storage = memoryStorage()
+    const engine = createTollBooth(makeConfig({ storage, pricing: { '/route': 10 } }))
+
+    const macaroon = mintMacaroon(ROOT_KEY, paymentHash, 50)
+    const req = makeRequest({ headers: { authorization: `L402 ${macaroon}:${preimage}` } })
+
+    await engine.handle(req)
+
+    const result = engine.reconcile(paymentHash, 100)
+    expect(result.adjusted).toBe(true)
+    expect(result.newBalance).toBe(0)
+  })
+
+  it('no-ops when actual equals estimated', async () => {
+    const { preimage, paymentHash } = makePreimageAndHash()
+    const storage = memoryStorage()
+    const engine = createTollBooth(makeConfig({ storage, pricing: { '/route': 10 } }))
+
+    const macaroon = mintMacaroon(ROOT_KEY, paymentHash, 1000)
+    const req = makeRequest({ headers: { authorization: `L402 ${macaroon}:${preimage}` } })
+
+    await engine.handle(req)
+
+    const result = engine.reconcile(paymentHash, 10)
+    expect(result.adjusted).toBe(false)
+    expect(result.delta).toBe(0)
+    expect(result.newBalance).toBe(990)
+  })
 })
 
 describe('strictPricing', () => {

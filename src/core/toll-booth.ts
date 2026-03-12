@@ -3,10 +3,11 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import { mintMacaroon, verifyMacaroon } from '../macaroon.js'
 import { FreeTier } from '../free-tier.js'
 import type { StorageBackend } from '../storage/interface.js'
-import type { TollBoothRequest, TollBoothResult, TollBoothCoreConfig } from './types.js'
+import type { TollBoothRequest, TollBoothResult, TollBoothCoreConfig, ReconcileResult } from './types.js'
 
 export interface TollBoothEngine {
   handle(req: TollBoothRequest): Promise<TollBoothResult>
+  reconcile(paymentHash: string, actualCost: number): ReconcileResult
   freeTier: FreeTier | null
   upstream: string
 }
@@ -15,6 +16,10 @@ export function createTollBooth(config: TollBoothCoreConfig): TollBoothEngine {
   const defaultAmount = config.defaultInvoiceAmount ?? 1000
   const upstream = config.upstream.replace(/\/$/, '')
   const freeTier = config.freeTier ? new FreeTier(config.freeTier.requestsPerDay) : null
+
+  // In-memory map is intentional: reconcile() is always called within the same request-response
+  // cycle by the adapter, so persistence is not needed.
+  const estimatedCosts = new Map<string, number>()
 
   return {
     freeTier,
@@ -54,11 +59,14 @@ export function createTollBooth(config: TollBoothCoreConfig): TollBoothEngine {
             authenticated: true,
             clientIp: req.ip,
           })
+          estimatedCosts.set(result.paymentHash!, cost)
           return {
             action: 'proxy',
             upstream,
             headers: { 'X-Credit-Balance': String(result.remaining) },
             creditBalance: result.remaining,
+            paymentHash: result.paymentHash,
+            estimatedCost: cost,
           }
         }
         // Fall through to issue a new challenge if authorisation failed
@@ -134,6 +142,23 @@ export function createTollBooth(config: TollBoothCoreConfig): TollBoothEngine {
         headers,
         body,
       }
+    },
+
+    reconcile(paymentHash: string, actualCost: number): ReconcileResult {
+      const estimated = estimatedCosts.get(paymentHash)
+      if (estimated === undefined) {
+        return { adjusted: false, newBalance: config.storage.balance(paymentHash), delta: 0 }
+      }
+      const delta = estimated - actualCost
+      if (delta === 0) {
+        return { adjusted: false, newBalance: config.storage.balance(paymentHash), delta: 0 }
+      }
+      const newBalance = config.storage.adjustCredits(paymentHash, delta)
+      if (delta < 0) {
+        console.warn(`[toll-booth] Reconciliation: additional charge of ${-delta} sats for ${paymentHash}, new balance ${newBalance}`)
+      }
+      estimatedCosts.delete(paymentHash)
+      return { adjusted: true, newBalance, delta }
     },
   }
 }

@@ -14,9 +14,15 @@ export interface TollBoothRequest {
 }
 
 export type TollBoothResult =
-  | { action: 'proxy'; upstream: string; headers: Record<string, string>; creditBalance?: number; freeRemaining?: number }
+  | { action: 'proxy'; upstream: string; headers: Record<string, string>; paymentHash?: string; estimatedCost?: number; creditBalance?: number; freeRemaining?: number }
   | { action: 'challenge'; status: 402; headers: Record<string, string>; body: Record<string, unknown> }
   | { action: 'pass'; upstream: string; headers: Record<string, string> }
+
+export interface ReconcileResult {
+  adjusted: boolean
+  newBalance: number
+  delta: number
+}
 
 export interface TollBoothCoreConfig {
   /** Lightning backend. Optional when Cashu-only mode is used. */
