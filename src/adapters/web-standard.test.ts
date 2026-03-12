@@ -183,6 +183,215 @@ describe('Web Standard adapter', () => {
     }
   })
 
+  describe('X-Toll-Cost reconciliation', () => {
+    function makeEngine() {
+      const backend = mockBackend()
+      const storage = memoryStorage()
+      return createTollBooth({
+        backend,
+        storage,
+        pricing: { '/route': 10 },
+        upstream: 'http://upstream.test',
+        rootKey: ROOT_KEY,
+      })
+    }
+
+    it('calls engine.reconcile when X-Toll-Cost header is present', async () => {
+      const engine = makeEngine()
+
+      const handleSpy = vi.spyOn(engine, 'handle').mockResolvedValue({
+        action: 'proxy',
+        upstream: 'http://upstream.test',
+        headers: { 'X-Credit-Balance': '90' },
+        paymentHash: 'a'.repeat(64),
+        estimatedCost: 10,
+        creditBalance: 90,
+      })
+      const reconcileSpy = vi.spyOn(engine, 'reconcile').mockReturnValue({ adjusted: true, newBalance: 93, delta: 3 })
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response('ok', { status: 200, headers: { 'X-Toll-Cost': '7' } }),
+      )
+
+      try {
+        const handler = createWebStandardMiddleware({ engine, upstream: 'http://upstream.test' })
+        await handler(new Request('http://localhost/route', { method: 'GET' }))
+        expect(reconcileSpy).toHaveBeenCalledWith('a'.repeat(64), 7)
+      } finally {
+        handleSpy.mockRestore()
+        reconcileSpy.mockRestore()
+        fetchSpy.mockRestore()
+      }
+    })
+
+    it('does not call reconcile when X-Toll-Cost is absent', async () => {
+      const engine = makeEngine()
+
+      const handleSpy = vi.spyOn(engine, 'handle').mockResolvedValue({
+        action: 'proxy',
+        upstream: 'http://upstream.test',
+        headers: { 'X-Credit-Balance': '90' },
+        paymentHash: 'a'.repeat(64),
+        estimatedCost: 10,
+        creditBalance: 90,
+      })
+      const reconcileSpy = vi.spyOn(engine, 'reconcile')
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response('ok', { status: 200 }),
+      )
+
+      try {
+        const handler = createWebStandardMiddleware({ engine, upstream: 'http://upstream.test' })
+        await handler(new Request('http://localhost/route', { method: 'GET' }))
+        expect(reconcileSpy).not.toHaveBeenCalled()
+      } finally {
+        handleSpy.mockRestore()
+        reconcileSpy.mockRestore()
+        fetchSpy.mockRestore()
+      }
+    })
+
+    it('updates X-Credit-Balance in response after reconciliation', async () => {
+      const engine = makeEngine()
+
+      const handleSpy = vi.spyOn(engine, 'handle').mockResolvedValue({
+        action: 'proxy',
+        upstream: 'http://upstream.test',
+        headers: { 'X-Credit-Balance': '90' },
+        paymentHash: 'a'.repeat(64),
+        estimatedCost: 10,
+        creditBalance: 90,
+      })
+      const reconcileSpy = vi.spyOn(engine, 'reconcile').mockReturnValue({ adjusted: true, newBalance: 97, delta: 7 })
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response('ok', { status: 200, headers: { 'X-Toll-Cost': '3' } }),
+      )
+
+      try {
+        const handler = createWebStandardMiddleware({ engine, upstream: 'http://upstream.test' })
+        const res = await handler(new Request('http://localhost/route', { method: 'GET' }))
+        expect(res.headers.get('x-credit-balance')).toBe('97')
+      } finally {
+        handleSpy.mockRestore()
+        reconcileSpy.mockRestore()
+        fetchSpy.mockRestore()
+      }
+    })
+
+    it('ignores non-numeric X-Toll-Cost values', async () => {
+      const engine = makeEngine()
+
+      const handleSpy = vi.spyOn(engine, 'handle').mockResolvedValue({
+        action: 'proxy',
+        upstream: 'http://upstream.test',
+        headers: { 'X-Credit-Balance': '90' },
+        paymentHash: 'a'.repeat(64),
+        estimatedCost: 10,
+        creditBalance: 90,
+      })
+      const reconcileSpy = vi.spyOn(engine, 'reconcile')
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response('ok', { status: 200, headers: { 'X-Toll-Cost': 'banana' } }),
+      )
+
+      try {
+        const handler = createWebStandardMiddleware({ engine, upstream: 'http://upstream.test' })
+        const res = await handler(new Request('http://localhost/route', { method: 'GET' }))
+        expect(res.status).toBe(200)
+        expect(reconcileSpy).not.toHaveBeenCalled()
+      } finally {
+        handleSpy.mockRestore()
+        reconcileSpy.mockRestore()
+        fetchSpy.mockRestore()
+      }
+    })
+
+    it('ignores negative X-Toll-Cost values', async () => {
+      const engine = makeEngine()
+
+      const handleSpy = vi.spyOn(engine, 'handle').mockResolvedValue({
+        action: 'proxy',
+        upstream: 'http://upstream.test',
+        headers: { 'X-Credit-Balance': '90' },
+        paymentHash: 'a'.repeat(64),
+        estimatedCost: 10,
+        creditBalance: 90,
+      })
+      const reconcileSpy = vi.spyOn(engine, 'reconcile')
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response('ok', { status: 200, headers: { 'X-Toll-Cost': '-5' } }),
+      )
+
+      try {
+        const handler = createWebStandardMiddleware({ engine, upstream: 'http://upstream.test' })
+        const res = await handler(new Request('http://localhost/route', { method: 'GET' }))
+        expect(res.status).toBe(200)
+        expect(reconcileSpy).not.toHaveBeenCalled()
+      } finally {
+        handleSpy.mockRestore()
+        reconcileSpy.mockRestore()
+        fetchSpy.mockRestore()
+      }
+    })
+
+    it('handles zero X-Toll-Cost (free request)', async () => {
+      const engine = makeEngine()
+
+      const handleSpy = vi.spyOn(engine, 'handle').mockResolvedValue({
+        action: 'proxy',
+        upstream: 'http://upstream.test',
+        headers: { 'X-Credit-Balance': '90' },
+        paymentHash: 'a'.repeat(64),
+        estimatedCost: 10,
+        creditBalance: 90,
+      })
+      const reconcileSpy = vi.spyOn(engine, 'reconcile').mockReturnValue({ adjusted: true, newBalance: 100, delta: 10 })
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response('ok', { status: 200, headers: { 'X-Toll-Cost': '0' } }),
+      )
+
+      try {
+        const handler = createWebStandardMiddleware({ engine, upstream: 'http://upstream.test' })
+        const res = await handler(new Request('http://localhost/route', { method: 'GET' }))
+        expect(res.status).toBe(200)
+        expect(reconcileSpy).toHaveBeenCalledWith('a'.repeat(64), 0)
+        expect(res.headers.get('x-credit-balance')).toBe('100')
+      } finally {
+        handleSpy.mockRestore()
+        reconcileSpy.mockRestore()
+        fetchSpy.mockRestore()
+      }
+    })
+
+    it('truncates fractional X-Toll-Cost values to integer', async () => {
+      const engine = makeEngine()
+
+      const handleSpy = vi.spyOn(engine, 'handle').mockResolvedValue({
+        action: 'proxy',
+        upstream: 'http://upstream.test',
+        headers: { 'X-Credit-Balance': '90' },
+        paymentHash: 'a'.repeat(64),
+        estimatedCost: 10,
+        creditBalance: 90,
+      })
+      const reconcileSpy = vi.spyOn(engine, 'reconcile').mockReturnValue({ adjusted: true, newBalance: 95, delta: 5 })
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response('ok', { status: 200, headers: { 'X-Toll-Cost': '5.9' } }),
+      )
+
+      try {
+        const handler = createWebStandardMiddleware({ engine, upstream: 'http://upstream.test' })
+        const res = await handler(new Request('http://localhost/route', { method: 'GET' }))
+        expect(res.status).toBe(200)
+        // parseInt('5.9', 10) === 5
+        expect(reconcileSpy).toHaveBeenCalledWith('a'.repeat(64), 5)
+      } finally {
+        handleSpy.mockRestore()
+        reconcileSpy.mockRestore()
+        fetchSpy.mockRestore()
+      }
+    })
+  })
+
   it('rejects oversized JSON bodies without reading them into memory', async () => {
     const backend = mockBackend()
     const storage = memoryStorage()

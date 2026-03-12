@@ -173,6 +173,21 @@ export function createWebStandardMiddleware(
         for (const [key, value] of Object.entries(extraHeaders)) {
           responseHeaders.set(key, value)
         }
+        // Reconcile estimated cost against actual cost reported by the upstream
+        if (result.action === 'proxy' && result.paymentHash) {
+          const tollCostHeader = res.headers.get('x-toll-cost')
+          if (tollCostHeader !== null) {
+            const actualCost = parseInt(tollCostHeader, 10)
+            if (Number.isFinite(actualCost) && actualCost >= 0) {
+              const reconciled = engine.reconcile(result.paymentHash, actualCost)
+              if (reconciled.adjusted) {
+                responseHeaders.set('X-Credit-Balance', String(reconciled.newBalance))
+              }
+            } else {
+              console.warn(`[toll-booth] Invalid X-Toll-Cost value: ${tollCostHeader}`)
+            }
+          }
+        }
         return new Response(res.body, {
           status: res.status,
           statusText: res.statusText,
