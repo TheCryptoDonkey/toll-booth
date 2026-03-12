@@ -26,6 +26,9 @@ export function mintMacaroon(rootKey: string, paymentHash: string, creditBalance
       if (!caveat.includes(' = ')) {
         throw new Error(`Invalid caveat format (must contain " = "): ${caveat}`)
       }
+      if (caveat.length > 1024) {
+        throw new Error(`Caveat exceeds maximum length of 1024 characters`)
+      }
       m.addFirstPartyCaveat(caveat)
     }
   }

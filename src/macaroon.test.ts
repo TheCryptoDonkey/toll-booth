@@ -103,6 +103,12 @@ describe('mintMacaroon with caveats', () => {
     expect(() => mintMacaroon(rootKey, paymentHash, 1000, ['invalid']))
       .toThrow()
   })
+
+  it('rejects caveats exceeding 1024 characters', () => {
+    const longCaveat = `key = ${'x'.repeat(1020)}`
+    expect(() => mintMacaroon(rootKey, paymentHash, 1000, [longCaveat]))
+      .toThrow(/exceeds maximum length/)
+  })
 })
 
 describe('caveat tampering prevention', () => {
