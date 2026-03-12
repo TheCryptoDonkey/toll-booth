@@ -26,7 +26,7 @@ async function safeParseJson<T>(c: Context, maxBytes = MAX_BODY_BYTES): Promise<
   const contentLength = c.req.header('content-length')
   if (contentLength !== undefined) {
     const len = parseInt(contentLength, 10)
-    if (Number.isFinite(len) && len > maxBytes) return undefined
+    if (!Number.isFinite(len) || len < 0 || len > maxBytes) return undefined
   }
   try {
     const text = await c.req.text()
@@ -198,7 +198,7 @@ export function createHonoTollBooth(config: HonoTollBoothConfig): HonoTollBooth 
         return c.json({ error: 'Invalid payment hash' }, 400)
       }
       const token = c.req.query('token')
-      const statusToken = token && token.length <= 128 ? token : undefined
+      const statusToken = token || undefined
       const accept = c.req.header('accept') ?? ''
 
       try {

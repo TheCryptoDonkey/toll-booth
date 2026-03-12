@@ -235,3 +235,31 @@ describe('custom caveat extraction', () => {
     expect(result.customCaveats).not.toHaveProperty('route')
   })
 })
+
+describe('credit balance bounds checking', () => {
+  const rootKey = 'a'.repeat(64)
+  const paymentHash = 'b'.repeat(64)
+
+  it('accepts valid credit_balance', () => {
+    const mac = mintMacaroon(rootKey, paymentHash, 1000)
+    const result = verifyMacaroon(rootKey, mac)
+    expect(result.valid).toBe(true)
+    expect(result.creditBalance).toBe(1000)
+  })
+
+  it('rejects negative credit_balance', () => {
+    // Use appendCaveat to forge a macaroon with negative credit_balance.
+    // This won't pass signature verification in real use (duplicate caveat rejection),
+    // but tests the parsing path in isolation.
+    const mac = mintMacaroon(rootKey, paymentHash, -1)
+    const result = verifyMacaroon(rootKey, mac)
+    expect(result.valid).toBe(false)
+  })
+
+  it('accepts zero credit_balance', () => {
+    const mac = mintMacaroon(rootKey, paymentHash, 0)
+    const result = verifyMacaroon(rootKey, mac)
+    expect(result.valid).toBe(true)
+    expect(result.creditBalance).toBe(0)
+  })
+})

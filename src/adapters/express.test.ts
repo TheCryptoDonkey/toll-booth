@@ -408,8 +408,8 @@ describe('Express adapter', () => {
       try {
         const res = await request(app, '/route', { method: 'GET' })
         expect(res.status).toBe(200)
-        // parseInt('5.9', 10) === 5
-        expect(reconcileSpy).toHaveBeenCalledWith('a'.repeat(64), 5)
+        // Fractional values like '5.9' are rejected by strict /^\d+$/ validation
+        expect(reconcileSpy).not.toHaveBeenCalled()
       } finally {
         upstream.close()
         handleSpy.mockRestore()

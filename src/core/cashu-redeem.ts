@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto'
 import type { StorageBackend } from '../storage/interface.js'
 import type { CashuRedeemRequest, CashuRedeemResult } from './types.js'
 import { PAYMENT_HASH_RE } from './types.js'
@@ -57,7 +58,7 @@ export async function handleCashuRedeem(
           const credited = await withLeaseKeepAlive(deps.storage, paymentHash, () =>
             deps.redeem(pendingClaim.token, paymentHash),
           )
-          const settlementSecret = globalThis.crypto.randomUUID()
+          const settlementSecret = randomBytes(32).toString('hex')
           const newlySettled = deps.storage.settleWithCredit(paymentHash, credited, settlementSecret)
           return {
             success: true,
@@ -77,7 +78,7 @@ export async function handleCashuRedeem(
       const credited = await withLeaseKeepAlive(deps.storage, paymentHash, () =>
         deps.redeem(token, paymentHash),
       )
-      const settlementSecret = globalThis.crypto.randomUUID()
+      const settlementSecret = randomBytes(32).toString('hex')
       const newlySettled = deps.storage.settleWithCredit(paymentHash, credited, settlementSecret)
       return {
         success: true,

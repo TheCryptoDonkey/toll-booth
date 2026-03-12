@@ -38,9 +38,11 @@ type ParsedJson<T> = { ok: true; value: T } | { ok: false }
 async function safeParseJson<T = Record<string, unknown>>(req: Request, maxBytes = 65_536): Promise<ParsedJson<T>> {
   // Quick rejection via Content-Length header — avoids reading the body at all
   const contentLength = req.headers.get('content-length')
-  const parsedLength = contentLength === null ? NaN : parseInt(contentLength, 10)
-  if (Number.isFinite(parsedLength) && parsedLength > maxBytes) {
-    return { ok: false }
+  if (contentLength !== null) {
+    const parsedLength = parseInt(contentLength, 10)
+    if (!Number.isFinite(parsedLength) || parsedLength < 0 || parsedLength > maxBytes) {
+      return { ok: false }
+    }
   }
 
   try {
@@ -176,7 +178,7 @@ export function createWebStandardMiddleware(
         // Reconcile estimated cost against actual cost reported by the upstream
         if (result.action === 'proxy' && result.paymentHash) {
           const tollCostHeader = res.headers.get('x-toll-cost')
-          if (tollCostHeader !== null) {
+          if (tollCostHeader !== null && /^\d+$/.test(tollCostHeader)) {
             const actualCost = parseInt(tollCostHeader, 10)
             if (Number.isSafeInteger(actualCost) && actualCost >= 0) {
               const reconciled = engine.reconcile(result.paymentHash, actualCost)

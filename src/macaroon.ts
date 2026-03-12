@@ -119,12 +119,19 @@ export function verifyMacaroon(rootKey: string, macaroonBase64: string, context?
       }
     }
 
+    let creditBalance: number | undefined
+    if (caveats.credit_balance !== undefined) {
+      const parsed = parseInt(caveats.credit_balance, 10)
+      if (!Number.isSafeInteger(parsed) || parsed < 0) {
+        return { valid: false }
+      }
+      creditBalance = parsed
+    }
+
     return {
       valid: true,
       paymentHash: identifier,
-      creditBalance: caveats.credit_balance !== undefined
-        ? parseInt(caveats.credit_balance, 10)
-        : undefined,
+      creditBalance,
       customCaveats: Object.keys(customCaveats).length > 0 ? customCaveats : undefined,
     }
   } catch {

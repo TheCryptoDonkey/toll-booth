@@ -73,7 +73,10 @@ export function createTollBooth(config: TollBoothCoreConfig): TollBoothEngine {
           const headers: Record<string, string> = { 'X-Credit-Balance': String(result.remaining) }
           if (result.customCaveats) {
             for (const [key, value] of Object.entries(result.customCaveats)) {
-              headers[`X-Toll-Caveat-${key.charAt(0).toUpperCase() + key.slice(1)}`] = value
+              // Only forward caveats with safe alphanumeric/underscore keys to prevent header injection
+              if (/^[a-zA-Z0-9_]+$/.test(key)) {
+                headers[`X-Toll-Caveat-${key.charAt(0).toUpperCase() + key.slice(1)}`] = value.replace(/[\r\n]/g, '')
+              }
             }
           }
           return {

@@ -382,8 +382,8 @@ describe('Web Standard adapter', () => {
         const handler = createWebStandardMiddleware({ engine, upstream: 'http://upstream.test' })
         const res = await handler(new Request('http://localhost/route', { method: 'GET' }))
         expect(res.status).toBe(200)
-        // parseInt('5.9', 10) === 5
-        expect(reconcileSpy).toHaveBeenCalledWith('a'.repeat(64), 5)
+        // Fractional values like '5.9' are rejected by strict /^\d+$/ validation
+        expect(reconcileSpy).not.toHaveBeenCalled()
       } finally {
         handleSpy.mockRestore()
         reconcileSpy.mockRestore()

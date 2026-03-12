@@ -182,7 +182,7 @@ export function createExpressMiddleware(
         // Only applies to L402-authenticated requests (result has paymentHash).
         if (result.action === 'proxy' && result.paymentHash) {
           const tollCostHeader = upstream_res.headers.get('x-toll-cost')
-          if (tollCostHeader !== null) {
+          if (tollCostHeader !== null && /^\d+$/.test(tollCostHeader)) {
             const actualCost = parseInt(tollCostHeader, 10)
             if (Number.isSafeInteger(actualCost) && actualCost >= 0) {
               const reconciled = engine.reconcile(result.paymentHash, actualCost)
