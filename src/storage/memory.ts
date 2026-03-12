@@ -17,6 +17,7 @@ function toStoredInvoice(record: StoredInvoiceRecord): StoredInvoice {
 export function memoryStorage(): StorageBackend {
   const balances = new Map<string, number>()
   const invoices = new Map<string, StoredInvoiceRecord>()
+  const invoiceIps = new Map<string, string>()
   const settled = new Map<string, string | undefined>()
   const claims = new Map<string, { token: string; claimedAt: string; leaseExpiresAt: number }>()
 
@@ -107,7 +108,7 @@ export function memoryStorage(): StorageBackend {
       return true
     },
 
-    storeInvoice(paymentHash: string, bolt11: string, amountSats: number, macaroon: string, statusToken: string): void {
+    storeInvoice(paymentHash: string, bolt11: string, amountSats: number, macaroon: string, statusToken: string, clientIp?: string): void {
       if (invoices.has(paymentHash)) return
       invoices.set(paymentHash, {
         paymentHash,
@@ -117,6 +118,15 @@ export function memoryStorage(): StorageBackend {
         statusToken,
         createdAt: new Date().toISOString(),
       })
+      if (clientIp) invoiceIps.set(paymentHash, clientIp)
+    },
+
+    pendingInvoiceCount(clientIp: string): number {
+      let count = 0
+      for (const [paymentHash, ip] of invoiceIps) {
+        if (ip === clientIp && !settled.has(paymentHash)) count++
+      }
+      return count
     },
 
     getInvoice(paymentHash: string): StoredInvoice | undefined {
@@ -150,6 +160,7 @@ export function memoryStorage(): StorageBackend {
     close(): void {
       balances.clear()
       invoices.clear()
+      invoiceIps.clear()
       settled.clear()
       claims.clear()
     },

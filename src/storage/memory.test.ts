@@ -317,6 +317,37 @@ describe('memoryStorage', () => {
     })
   })
 
+  // --- pendingInvoiceCount ---
+
+  describe('pendingInvoiceCount', () => {
+    it('returns 0 when no invoices exist', () => {
+      expect(storage.pendingInvoiceCount('1.2.3.4')).toBe(0)
+    })
+
+    it('counts pending invoices for an IP', () => {
+      storage.storeInvoice('hash1', 'lnbc1', 100, 'mac1', 'tok1', '1.2.3.4')
+      storage.storeInvoice('hash2', 'lnbc2', 100, 'mac2', 'tok2', '1.2.3.4')
+      expect(storage.pendingInvoiceCount('1.2.3.4')).toBe(2)
+    })
+
+    it('does not count invoices from other IPs', () => {
+      storage.storeInvoice('hash1', 'lnbc1', 100, 'mac1', 'tok1', '1.2.3.4')
+      storage.storeInvoice('hash2', 'lnbc2', 100, 'mac2', 'tok2', '5.6.7.8')
+      expect(storage.pendingInvoiceCount('1.2.3.4')).toBe(1)
+    })
+
+    it('does not count settled invoices', () => {
+      storage.storeInvoice('hash1', 'lnbc1', 100, 'mac1', 'tok1', '1.2.3.4')
+      storage.settleWithCredit('hash1', 100)
+      expect(storage.pendingInvoiceCount('1.2.3.4')).toBe(0)
+    })
+
+    it('returns 0 for invoices stored without clientIp', () => {
+      storage.storeInvoice('hash1', 'lnbc1', 100, 'mac1', 'tok1')
+      expect(storage.pendingInvoiceCount('1.2.3.4')).toBe(0)
+    })
+  })
+
   // --- Close ---
 
   describe('close', () => {

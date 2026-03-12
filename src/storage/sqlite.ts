@@ -75,6 +75,13 @@ export function sqliteStorage(config?: SqliteStorageConfig): StorageBackend {
     // Column already exists — ignore
   }
 
+  // Migration: add client_ip column to invoices table.
+  try {
+    db.exec('ALTER TABLE invoices ADD COLUMN client_ip TEXT')
+  } catch {
+    // Column already exists — ignore
+  }
+
   const stmtCredit = db.prepare(`
     INSERT INTO credits (payment_hash, balance)
     VALUES (?, ?)
@@ -93,8 +100,14 @@ export function sqliteStorage(config?: SqliteStorageConfig): StorageBackend {
   )
 
   const stmtStoreInvoice = db.prepare(`
-    INSERT OR IGNORE INTO invoices (payment_hash, bolt11, amount_sats, macaroon, status_token)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT OR IGNORE INTO invoices (payment_hash, bolt11, amount_sats, macaroon, status_token, client_ip)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `)
+
+  const stmtPendingInvoiceCount = db.prepare(`
+    SELECT COUNT(*) as count FROM invoices i
+    LEFT JOIN settlements s ON i.payment_hash = s.payment_hash
+    WHERE i.client_ip = ? AND s.payment_hash IS NULL
   `)
 
   const stmtGetInvoice = db.prepare(
@@ -306,8 +319,13 @@ export function sqliteStorage(config?: SqliteStorageConfig): StorageBackend {
       return result.changes > 0
     },
 
-    storeInvoice(paymentHash: string, bolt11: string, amountSats: number, macaroon: string, statusToken: string): void {
-      stmtStoreInvoice.run(paymentHash, bolt11, amountSats, macaroon, statusToken)
+    storeInvoice(paymentHash: string, bolt11: string, amountSats: number, macaroon: string, statusToken: string, clientIp?: string): void {
+      stmtStoreInvoice.run(paymentHash, bolt11, amountSats, macaroon, statusToken, clientIp ?? null)
+    },
+
+    pendingInvoiceCount(clientIp: string): number {
+      const row = stmtPendingInvoiceCount.get(clientIp) as { count: number }
+      return row.count
     },
 
     getInvoice(paymentHash: string): StoredInvoice | undefined {

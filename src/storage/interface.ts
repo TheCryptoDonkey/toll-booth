@@ -53,7 +53,9 @@ export interface StorageBackend {
    * Returns true if extended, false if missing/settled/expired.
    */
   extendRecoveryLease(paymentHash: string, leaseMs: number): boolean
-  storeInvoice(paymentHash: string, bolt11: string, amountSats: number, macaroon: string, statusToken: string): void
+  storeInvoice(paymentHash: string, bolt11: string, amountSats: number, macaroon: string, statusToken: string, clientIp?: string): void
+  /** Count pending (unpaid) invoices for a given client IP. */
+  pendingInvoiceCount(clientIp: string): number
   getInvoice(paymentHash: string): StoredInvoice | undefined
   getInvoiceForStatus(paymentHash: string, statusToken: string): StoredInvoice | undefined
   /** Delete invoices older than maxAgeMs. Returns the number of deleted rows. */

@@ -223,6 +223,40 @@ describe('sqliteStorage', () => {
     })
   })
 
+  describe('pendingInvoiceCount', () => {
+    it('returns 0 when no invoices exist', () => {
+      storage = sqliteStorage()
+      expect(storage.pendingInvoiceCount('1.2.3.4')).toBe(0)
+    })
+
+    it('counts pending invoices for an IP', () => {
+      storage = sqliteStorage()
+      storage.storeInvoice('hash1', 'lnbc1', 100, 'mac1', 'tok1', '1.2.3.4')
+      storage.storeInvoice('hash2', 'lnbc2', 100, 'mac2', 'tok2', '1.2.3.4')
+      expect(storage.pendingInvoiceCount('1.2.3.4')).toBe(2)
+    })
+
+    it('does not count invoices from other IPs', () => {
+      storage = sqliteStorage()
+      storage.storeInvoice('hash1', 'lnbc1', 100, 'mac1', 'tok1', '1.2.3.4')
+      storage.storeInvoice('hash2', 'lnbc2', 100, 'mac2', 'tok2', '5.6.7.8')
+      expect(storage.pendingInvoiceCount('1.2.3.4')).toBe(1)
+    })
+
+    it('does not count settled invoices', () => {
+      storage = sqliteStorage()
+      storage.storeInvoice('hash1', 'lnbc1', 100, 'mac1', 'tok1', '1.2.3.4')
+      storage.settleWithCredit('hash1', 100)
+      expect(storage.pendingInvoiceCount('1.2.3.4')).toBe(0)
+    })
+
+    it('returns 0 for invoices stored without clientIp', () => {
+      storage = sqliteStorage()
+      storage.storeInvoice('hash1', 'lnbc1', 100, 'mac1', 'tok1')
+      expect(storage.pendingInvoiceCount('1.2.3.4')).toBe(0)
+    })
+  })
+
   it('prunes invoices older than maxAgeMs', () => {
     storage = sqliteStorage()
     storage.storeInvoice('h1', 'bolt11', 100, 'mac', 'tok1')
