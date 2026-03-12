@@ -28,7 +28,9 @@ A single protocol. Multiple rails. The client picks how to pay.
 
 **Nostr Wallet Connect** — wallet-to-wallet payments over Nostr relays. The client's wallet pays the invoice directly, no browser extension required. Any NWC-compatible wallet works. The payment travels the same relay infrastructure the client already uses for social communication.
 
-Three rails. One middleware. The API operator picks which to accept. The client picks which to use. Neither needs permission from the other.
+**x402 / stablecoins** — on the roadmap. Coinbase's x402 protocol brings USDC and other stablecoins to the HTTP 402 flow. When toll-booth adds x402 as a backend, a single deployment will accept Lightning, Cashu, NWC, and stablecoin payments simultaneously. Same middleware, same credit accounting, one more rail.
+
+Four rails and counting. One middleware. The API operator picks which to accept. The client picks which to use. Neither needs permission from the other.
 
 ## The vending machine web
 

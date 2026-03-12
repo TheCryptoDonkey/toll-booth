@@ -3,7 +3,7 @@
 [![MIT licence](https://img.shields.io/badge/licence-MIT-blue.svg)](./LICENSE)
 [![Nostr](https://img.shields.io/badge/Nostr-Zap%20me-purple)](https://primal.net/p/npub1mgvlrnf5hm9yf0n5mf9nqmvarhvxkc6remu5ec3vf8r0txqkuk7su0e7q2)
 
-**Any API becomes a Lightning toll booth in one line.**
+**Monetise any API with one line of code.**
 
 ![toll-booth demo](demo/toll-booth-demo.gif)
 
@@ -59,11 +59,11 @@ app.listen(3000)
 
 Zero accounts. Zero API keys. Zero chargebacks. Zero KYC. Zero vendor lock-in.
 
-Your API earns sats the moment it receives a request. Clients pay with any Lightning wallet, no relationship with you required. Payments settle instantly and are cryptographically final - no disputes, no reversals, no Stripe risk reviews.
+Your API earns money the moment it receives a request. Clients pay with Lightning, Cashu ecash, or NWC — no relationship with you required. Payments settle instantly and are cryptographically final — no disputes, no reversals, no Stripe risk reviews.
 
 ---
 
-## Let AI agents pay for your API with Lightning
+## Let AI agents pay for your API
 
 toll-booth is the **server side** of a two-part stack for machine-to-machine payments.
 [l402-mcp](https://github.com/TheCryptoDonkey/l402-mcp) is the **client side** - an MCP server that gives AI agents the ability to discover, pay, and consume L402-gated APIs autonomously.
@@ -267,24 +267,13 @@ Each backend implements the `LightningBackend` interface (`createInvoice` + `che
 
 ---
 
-## Why not x402?
+## What about x402?
 
-[x402](https://x402.org) is Coinbase's HTTP 402 payment protocol for on-chain stablecoins. It validates the same idea - machines paying for APIs - but makes different trade-offs.
+[x402](https://x402.org) is Coinbase's HTTP 402 payment protocol for on-chain stablecoins. Great — the more protocols normalising HTTP 402 as a payment primitive, the better for everyone.
 
-| | x402 | toll-booth |
-|---|---|---|
-| **Settlement** | On-chain (Base, Ethereum) | Lightning Network - sub-second, final |
-| **Settlement time** | Block confirmations (seconds to minutes) | Milliseconds |
-| **Transaction fees** | Gas fees (variable) | Routing fees (fractions of a sat) |
-| **Currency** | USDC on Base | Bitcoin (sats), with stablecoin compatibility via USDT-over-LN bridges |
-| **Infrastructure** | Requires Coinbase Commerce or on-chain wallet | Any of 5 Lightning backends, Cashu ecash, or NWC - self-hosted or hosted |
-| **Vendor lock-in** | Coinbase ecosystem | None - open protocol, open source, any Lightning wallet |
-| **Serverless** | Yes | Yes - Web Standard adapter for Workers, Deno, Bun |
-| **Offline/edge** | No - requires chain access | Yes - Cashu-only mode needs no node at all |
+toll-booth is **payment-rail agnostic**. It already supports Lightning (five backends), Cashu ecash, and Nostr Wallet Connect. x402 is on the roadmap as another pluggable backend. When it lands, a single toll-booth deployment will accept Lightning **and** x402 stablecoins **and** Cashu — simultaneously. The seller doesn't care how they get paid. They just want paid.
 
-x402 is doing valuable work normalising HTTP 402 as a payment primitive. If your clients already hold USDC on Base, it's a reasonable choice. If you want sub-second settlement, self-sovereign infrastructure, and a protocol that works with any Lightning wallet on earth, toll-booth is the answer.
-
-**Stablecoin compatibility:** toll-booth doesn't care how an invoice gets paid. As USDT-over-Lightning bridges (UTEXO and others) go live, your gated APIs automatically accept stablecoins with zero code changes. The best of both worlds: stablecoin UX on Bitcoin rails.
+The unique value of toll-booth isn't any single payment rail. It's the **middleware layer**: gating, credit accounting, free tiers, volume discounts, upstream proxying, and macaroon credentials — all framework-agnostic, all runtime-agnostic, all payment-rail agnostic. Payment protocols are pluggable backends. toll-booth is the booth.
 
 ---
 
@@ -400,6 +389,8 @@ See [docs/configuration.md](docs/configuration.md) for the full reference includ
 ## Vision
 
 **[Why L402?](docs/vision.md)** - the case for permissionless, machine-to-machine payments on the web.
+
+**[Architecture](docs/architecture.md)** - how toll-booth, token-toll, and l402-mcp fit together.
 
 ---
 
