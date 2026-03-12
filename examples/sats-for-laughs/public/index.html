@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sats for Laughs - Pay 21 sats, get a joke</title>
+<meta name="description" content="Lightning-powered joke API. Pay sats, get laughs. Powered by toll-booth L402 middleware.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+<style>
+  *, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, sans-serif;
+    background: linear-gradient(135deg, #1a1a2e, #16213e);
+    color: #e2e8f0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 2rem 1rem;
+    line-height: 1.6;
+  }
+
+  .container {
+    max-width: 520px;
+    width: 100%;
+  }
+
+  /* Header */
+  .header {
+    text-align: center;
+    margin-bottom: 2rem;
+  }
+
+  .header .bolt {
+    font-size: 3rem;
+    display: block;
+    margin-bottom: 0.25rem;
+  }
+
+  .header h1 {
+    font-size: 2rem;
+    font-weight: 800;
+    background: linear-gradient(135deg, #f97316, #fb923c);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 0.25rem;
+  }
+
+  .header .tagline {
+    color: #94a3b8;
+    font-size: 1.05rem;
+  }
+
+  /* Topic pills */
+  .topics {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    justify-content: center;
+    margin-bottom: 1.75rem;
+  }
+
+  .topic-pill {
+    background: rgba(249, 115, 22, 0.1);
+    border: 1px solid rgba(249, 115, 22, 0.35);
+    color: #fb923c;
+    padding: 0.35rem 0.85rem;
+    border-radius: 999px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-family: inherit;
+  }
+
+  .topic-pill:hover {
+    background: rgba(249, 115, 22, 0.2);
+    border-color: rgba(249, 115, 22, 0.6);
+  }
+
+  .topic-pill.active {
+    background: linear-gradient(135deg, #f97316, #fb923c);
+    color: #1a1a2e;
+    border-color: transparent;
+    font-weight: 600;
+  }
+
+  /* Joke area */
+  #joke-area {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 1rem;
+    padding: 2rem 1.5rem;
+    margin-bottom: 1.25rem;
+    min-height: 140px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    transition: opacity 0.3s ease, transform 0.3s ease;
+  }
+
+  #joke-area.fading {
+    opacity: 0.3;
+    transform: scale(0.98);
+  }
+
+  .joke-setup {
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: #f1f5f9;
+    margin-bottom: 1rem;
+  }
+
+  .joke-punchline {
+    font-size: 1.1rem;
+    color: #fb923c;
+    font-style: italic;
+  }
+
+  .joke-topic-badge {
+    display: inline-block;
+    margin-top: 1rem;
+    font-size: 0.75rem;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  /* Loading spinner */
+  .spinner-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100px;
+  }
+
+  .spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid rgba(249, 115, 22, 0.2);
+    border-top-color: #f97316;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  /* Error */
+  .error-msg {
+    text-align: center;
+    color: #f87171;
+    font-size: 0.95rem;
+  }
+
+  .retry-btn {
+    display: inline-block;
+    margin-top: 0.75rem;
+    background: transparent;
+    border: 1px solid #f87171;
+    color: #f87171;
+    padding: 0.4rem 1rem;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.85rem;
+    transition: all 0.2s ease;
+  }
+
+  .retry-btn:hover {
+    background: rgba(248, 113, 113, 0.15);
+  }
+
+  /* Payment area */
+  #payment-area {
+    display: none;
+    text-align: center;
+    margin-bottom: 1.25rem;
+  }
+
+  #payment-area.visible {
+    display: block;
+  }
+
+  .payment-heading {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+  }
+
+  .payment-subtext {
+    color: #94a3b8;
+    font-size: 0.9rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .qr-container {
+    background: #ffffff;
+    border-radius: 0.75rem;
+    padding: 1rem;
+    display: inline-block;
+    margin-bottom: 1rem;
+    line-height: 0;
+  }
+
+  .qr-container svg {
+    width: 220px;
+    height: 220px;
+  }
+
+  .payment-actions {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-bottom: 0.75rem;
+  }
+
+  .btn-copy, .btn-webln {
+    padding: 0.5rem 1.25rem;
+    border-radius: 0.5rem;
+    font-size: 0.9rem;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .btn-copy {
+    background: transparent;
+    border: 1px solid rgba(249, 115, 22, 0.5);
+    color: #fb923c;
+  }
+
+  .btn-copy:hover {
+    background: rgba(249, 115, 22, 0.1);
+    border-color: #f97316;
+  }
+
+  .btn-webln {
+    background: linear-gradient(135deg, #f97316, #fb923c);
+    border: none;
+    color: #1a1a2e;
+    font-weight: 600;
+  }
+
+  .btn-webln:hover {
+    filter: brightness(1.1);
+  }
+
+  .poll-status {
+    color: #64748b;
+    font-size: 0.8rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+  }
+
+  .poll-status .mini-spinner {
+    width: 12px;
+    height: 12px;
+    border: 2px solid rgba(100, 116, 139, 0.3);
+    border-top-color: #64748b;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    display: inline-block;
+  }
+
+  /* Main action button */
+  .action-btn {
+    display: block;
+    width: 100%;
+    padding: 0.85rem;
+    font-size: 1.05rem;
+    font-weight: 700;
+    font-family: inherit;
+    border: none;
+    border-radius: 0.75rem;
+    background: linear-gradient(135deg, #f97316, #fb923c);
+    color: #1a1a2e;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    margin-bottom: 0.75rem;
+  }
+
+  .action-btn:hover:not(:disabled) {
+    filter: brightness(1.1);
+    transform: translateY(-1px);
+  }
+
+  .action-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  /* Status line */
+  .status-line {
+    text-align: center;
+    font-size: 0.8rem;
+    color: #64748b;
+    min-height: 1.2em;
+  }
+
+  .status-line .free-badge {
+    color: #4ade80;
+  }
+
+  .status-line .credit-badge {
+    color: #fb923c;
+  }
+
+  /* Footer */
+  .footer {
+    text-align: center;
+    margin-top: 2.5rem;
+    font-size: 0.8rem;
+    color: #475569;
+  }
+
+  .footer a {
+    color: #64748b;
+    text-decoration: none;
+    transition: color 0.2s;
+  }
+
+  .footer a:hover {
+    color: #fb923c;
+  }
+
+  /* Responsive */
+  @media (max-width: 480px) {
+    body {
+      padding: 1.25rem 0.75rem;
+    }
+
+    .header h1 {
+      font-size: 1.65rem;
+    }
+
+    .header .bolt {
+      font-size: 2.5rem;
+    }
+
+    #joke-area {
+      padding: 1.5rem 1.25rem;
+    }
+
+    .joke-setup {
+      font-size: 1.05rem;
+    }
+
+    .joke-punchline {
+      font-size: 1rem;
+    }
+
+    .qr-container svg {
+      width: 180px;
+      height: 180px;
+    }
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <header class="header">
+    <span class="bolt" aria-hidden="true">&#9889;</span>
+    <h1>Sats for Laughs</h1>
+    <p class="tagline">Pay 21 sats. Get a joke. Simple as that.</p>
+  </header>
+
+  <nav class="topics" aria-label="Joke topics">
+    <button class="topic-pill active" data-topic="all">all</button>
+    <button class="topic-pill" data-topic="bitcoin">bitcoin</button>
+    <button class="topic-pill" data-topic="lightning">lightning</button>
+    <button class="topic-pill" data-topic="nostr">nostr</button>
+    <button class="topic-pill" data-topic="freedom tech">freedom tech</button>
+    <button class="topic-pill" data-topic="meshtastic">meshtastic</button>
+    <button class="topic-pill" data-topic="handshake">handshake</button>
+  </nav>
+
+  <div id="joke-area">
+    <div class="spinner-wrap"><div class="spinner"></div></div>
+  </div>
+
+  <div id="payment-area"></div>
+
+  <button class="action-btn" id="action-btn" disabled>Loading...</button>
+
+  <div class="status-line" id="status-line"></div>
+
+  <footer class="footer">
+    Powered by <a href="https://github.com/TheCryptoDonkey/toll-booth" target="_blank" rel="noopener">toll-booth</a> &#8212; L402 Lightning middleware
+  </footer>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  // -- DOM refs --
+  var jokeArea = document.getElementById('joke-area');
+  var paymentArea = document.getElementById('payment-area');
+  var actionBtn = document.getElementById('action-btn');
+  var statusLine = document.getElementById('status-line');
+  var topicPills = document.querySelectorAll('.topic-pill');
+
+  // -- State --
+  var activeTopic = null; // null = all
+  var pollTimer = null;
+  var currentBolt11 = null;
+  var fetching = false;
+
+  // -- Storage helpers --
+  function getToken() {
+    return sessionStorage.getItem('l402_token');
+  }
+
+  function setToken(token) {
+    sessionStorage.setItem('l402_token', token);
+  }
+
+  function clearToken() {
+    sessionStorage.removeItem('l402_token');
+  }
+
+  // -- Topic pills --
+  topicPills.forEach(function (pill) {
+    pill.addEventListener('click', function () {
+      topicPills.forEach(function (p) { p.classList.remove('active'); });
+      pill.classList.add('active');
+      var topic = pill.dataset.topic;
+      activeTopic = topic === 'all' ? null : topic;
+      fetchJoke(activeTopic);
+    });
+  });
+
+  // -- Action button --
+  actionBtn.addEventListener('click', function () {
+    if (!fetching) {
+      fetchJoke(activeTopic);
+    }
+  });
+
+  // -- Core: fetch joke --
+  async function fetchJoke(topic) {
+    if (fetching) return;
+    fetching = true;
+    stopPolling();
+    hidePayment();
+
+    actionBtn.disabled = true;
+    actionBtn.textContent = 'Fetching...';
+    jokeArea.classList.add('fading');
+
+    var url = '/api/joke';
+    if (topic) url += '?topic=' + encodeURIComponent(topic);
+
+    var headers = { 'Accept': 'application/json' };
+    var token = getToken();
+    if (token) headers['Authorization'] = token;
+
+    try {
+      var res = await fetch(url, { headers: headers });
+
+      if (res.ok) {
+        var data = await res.json();
+        var creditBalance = res.headers.get('X-Credit-Balance');
+        var freeRemaining = res.headers.get('X-Free-Remaining');
+        showJoke(data, creditBalance, freeRemaining);
+        fetching = false;
+        return;
+      }
+
+      if (res.status === 402) {
+        var body = await res.json();
+
+        // If we had a token and still got 402, it is expired/invalid
+        if (token) clearToken();
+
+        await showPayment(body);
+        fetching = false;
+        return;
+      }
+
+      // Other error
+      showError('Something went wrong (HTTP ' + res.status + '). Try again?');
+      fetching = false;
+    } catch (err) {
+      showError('Could not reach the server. Try again?');
+      fetching = false;
+    }
+  }
+
+  // -- Show joke --
+  function showJoke(data, creditBalance, freeRemaining) {
+    // Build joke display using safe DOM methods
+    jokeArea.textContent = '';
+
+    var setupEl = document.createElement('div');
+    setupEl.className = 'joke-setup';
+    setupEl.textContent = data.setup;
+    jokeArea.appendChild(setupEl);
+
+    var punchlineEl = document.createElement('div');
+    punchlineEl.className = 'joke-punchline';
+    punchlineEl.textContent = data.punchline;
+    jokeArea.appendChild(punchlineEl);
+
+    var badgeEl = document.createElement('div');
+    badgeEl.className = 'joke-topic-badge';
+    badgeEl.textContent = data.topic;
+    jokeArea.appendChild(badgeEl);
+
+    jokeArea.classList.remove('fading');
+
+    if (creditBalance !== null) {
+      var credits = parseInt(creditBalance, 10);
+      actionBtn.textContent = 'Tell me another one! (' + credits + ' sats remaining)';
+      statusLine.textContent = '';
+      var creditSpan = document.createElement('span');
+      creditSpan.className = 'credit-badge';
+      creditSpan.textContent = '\u26A1 ' + credits + ' sats credit';
+      statusLine.appendChild(creditSpan);
+    } else if (freeRemaining !== null) {
+      var remaining = parseInt(freeRemaining, 10);
+      actionBtn.textContent = 'Tell me another one!';
+      statusLine.textContent = '';
+      var freeSpan = document.createElement('span');
+      freeSpan.className = 'free-badge';
+      if (remaining > 0) {
+        freeSpan.textContent = remaining + ' free joke' + (remaining === 1 ? '' : 's') + ' left today';
+      } else {
+        freeSpan.textContent = 'That was your last free one today!';
+      }
+      statusLine.appendChild(freeSpan);
+    } else {
+      actionBtn.textContent = 'Tell me another one!';
+      statusLine.textContent = '';
+    }
+
+    actionBtn.disabled = false;
+    hidePayment();
+  }
+
+  // -- Show payment --
+  async function showPayment(challengeData) {
+    // Show prompt in joke area using safe DOM methods
+    jokeArea.textContent = '';
+    var promptDiv = document.createElement('div');
+    promptDiv.style.textAlign = 'center';
+    promptDiv.style.color = '#94a3b8';
+    promptDiv.textContent = 'Your free jokes are used up for today. Pay 21 sats to keep the laughs coming!';
+    jokeArea.appendChild(promptDiv);
+    jokeArea.classList.remove('fading');
+
+    actionBtn.textContent = 'Waiting for payment...';
+    actionBtn.disabled = true;
+    statusLine.textContent = '';
+
+    // Call /create-invoice to get QR SVG and full invoice data
+    try {
+      var invoiceRes = await fetch('/create-invoice', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amountSats: challengeData.amount_sats }),
+      });
+
+      if (!invoiceRes.ok) {
+        showError('Failed to create invoice. Try again?');
+        return;
+      }
+
+      var inv = await invoiceRes.json();
+      currentBolt11 = inv.bolt11;
+
+      // Build payment area using DOM methods
+      paymentArea.textContent = '';
+
+      var heading = document.createElement('div');
+      heading.className = 'payment-heading';
+      heading.textContent = 'Scan to pay ' + inv.amount_sats + ' sats';
+      paymentArea.appendChild(heading);
+
+      var subtext = document.createElement('div');
+      subtext.className = 'payment-subtext';
+      subtext.textContent = 'Any Lightning wallet will do';
+      paymentArea.appendChild(subtext);
+
+      // QR code container - qr_svg is trusted server-generated SVG
+      var qrContainer = document.createElement('div');
+      qrContainer.className = 'qr-container';
+      qrContainer.innerHTML = inv.qr_svg; // trusted: generated by our own server via qrcode lib
+      paymentArea.appendChild(qrContainer);
+
+      var actions = document.createElement('div');
+      actions.className = 'payment-actions';
+
+      var copyBtn = document.createElement('button');
+      copyBtn.className = 'btn-copy';
+      copyBtn.id = 'btn-copy';
+      copyBtn.title = 'Copy Lightning invoice';
+      copyBtn.textContent = 'Copy invoice';
+      copyBtn.addEventListener('click', function () { copyInvoice(); });
+      actions.appendChild(copyBtn);
+
+      if (window.webln) {
+        var weblnBtn = document.createElement('button');
+        weblnBtn.className = 'btn-webln';
+        weblnBtn.id = 'btn-webln';
+        weblnBtn.textContent = 'Pay with WebLN';
+        weblnBtn.addEventListener('click', function () { payWebLN(inv.bolt11); });
+        actions.appendChild(weblnBtn);
+      }
+
+      paymentArea.appendChild(actions);
+
+      var pollDiv = document.createElement('div');
+      pollDiv.className = 'poll-status';
+      var miniSpinner = document.createElement('span');
+      miniSpinner.className = 'mini-spinner';
+      pollDiv.appendChild(miniSpinner);
+      pollDiv.appendChild(document.createTextNode(' Waiting for payment...'));
+      paymentArea.appendChild(pollDiv);
+
+      paymentArea.classList.add('visible');
+
+      // Start polling
+      startPolling(inv.payment_url, inv.macaroon);
+
+    } catch (err) {
+      showError('Failed to create invoice. Try again?');
+    }
+  }
+
+  // -- Polling --
+  function startPolling(paymentUrl, macaroon) {
+    stopPolling();
+    pollTimer = setInterval(async function () {
+      try {
+        var res = await fetch(paymentUrl, {
+          headers: { 'Accept': 'application/json' },
+        });
+        if (!res.ok) return; // silently retry
+
+        var data = await res.json();
+        if (data.paid) {
+          stopPolling();
+
+          // Build and store L402 token
+          var suffix = data.preimage || data.token_suffix;
+          if (suffix && macaroon) {
+            setToken('L402 ' + macaroon + ':' + suffix);
+          }
+
+          // Re-fetch the joke
+          fetching = false;
+          fetchJoke(activeTopic);
+        }
+      } catch (err) {
+        // Silently retry on network errors
+      }
+    }, 3000);
+  }
+
+  function stopPolling() {
+    if (pollTimer) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
+  }
+
+  // -- Hide payment --
+  function hidePayment() {
+    paymentArea.classList.remove('visible');
+    paymentArea.textContent = '';
+    currentBolt11 = null;
+  }
+
+  // -- Copy invoice --
+  function copyInvoice() {
+    if (!currentBolt11) return;
+    var btn = document.getElementById('btn-copy');
+    navigator.clipboard.writeText(currentBolt11).then(function () {
+      var original = btn.textContent;
+      btn.textContent = 'Copied!';
+      setTimeout(function () { btn.textContent = original; }, 1500);
+    }).catch(function () {
+      // Fallback: select from a temporary input
+      var tmp = document.createElement('input');
+      tmp.value = currentBolt11;
+      document.body.appendChild(tmp);
+      tmp.select();
+      document.execCommand('copy');
+      document.body.removeChild(tmp);
+      btn.textContent = 'Copied!';
+      setTimeout(function () { btn.textContent = 'Copy invoice'; }, 1500);
+    });
+  }
+
+  // -- WebLN --
+  async function payWebLN(bolt11) {
+    if (!window.webln) return;
+    var btn = document.getElementById('btn-webln');
+    try {
+      btn.disabled = true;
+      btn.textContent = 'Opening wallet...';
+      await window.webln.enable();
+      await window.webln.sendPayment(bolt11);
+      btn.textContent = 'Payment sent!';
+      // Polling will pick up the settlement
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = 'Pay with WebLN';
+    }
+  }
+
+  // -- Error display --
+  function showError(msg) {
+    jokeArea.textContent = '';
+    var errorDiv = document.createElement('div');
+    errorDiv.className = 'error-msg';
+    errorDiv.textContent = msg;
+
+    var retryBtn = document.createElement('button');
+    retryBtn.className = 'retry-btn';
+    retryBtn.textContent = 'Retry';
+    retryBtn.addEventListener('click', function () {
+      fetchJoke(activeTopic);
+    });
+
+    errorDiv.appendChild(document.createElement('br'));
+    errorDiv.appendChild(retryBtn);
+    jokeArea.appendChild(errorDiv);
+    jokeArea.classList.remove('fading');
+
+    actionBtn.textContent = 'Try again';
+    actionBtn.disabled = false;
+  }
+
+  // -- Init --
+  fetchJoke();
+})();
+</script>
+
+</body>
+</html>
