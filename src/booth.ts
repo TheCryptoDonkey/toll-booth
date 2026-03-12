@@ -118,6 +118,7 @@ export class Booth {
       rootKey: this.rootKey,
       tiers: config.creditTiers ?? [],
       defaultAmount,
+      maxPendingPerIp: config.invoiceRateLimit?.maxPendingPerIp,
     }
 
     const invoiceStatusDeps: InvoiceStatusDeps = {

@@ -42,11 +42,16 @@ export interface TollBoothCoreConfig {
 
 export interface CreateInvoiceRequest {
   amountSats?: number
+  caveats?: string[]
+  /** Injected by adapter; not client-settable. Used for invoice rate limiting. */
+  clientIp?: string
 }
 
 export interface CreateInvoiceResult {
   success: boolean
   error?: string
+  /** HTTP status code hint for the adapter. Defaults to 400 on error. */
+  status?: number
   tiers?: CreditTier[]
   data?: {
     bolt11: string

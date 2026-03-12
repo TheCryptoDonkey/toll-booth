@@ -176,6 +176,12 @@ export interface BoothConfig {
    * Default: 86400000 (24 hours).
    */
   invoiceMaxAgeMs?: number
+
+  /**
+   * Rate limit for invoice creation. When configured, limits the number of
+   * pending (unpaid) invoices per client IP.
+   */
+  invoiceRateLimit?: { maxPendingPerIp: number }
 }
 
 /**

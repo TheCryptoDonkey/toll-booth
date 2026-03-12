@@ -183,3 +183,76 @@ describe('handleCreateInvoice', () => {
     expect(result.error).toBe('Failed to create invoice')
   })
 })
+
+describe('invoice rate limiting', () => {
+  it('rejects with status 429 when pending invoice count exceeds limit', async () => {
+    const storage = memoryStorage()
+    let counter = 0
+    const backend = mockBackend({
+      createInvoice: vi.fn().mockImplementation(async () => ({
+        bolt11: 'lnbc...',
+        paymentHash: 'a'.repeat(62) + String(counter++).padStart(2, '0'),
+      })),
+    })
+    const deps = makeDeps({ storage, backend, maxPendingPerIp: 2 })
+
+    await handleCreateInvoice(deps, { clientIp: '1.2.3.4' })
+    await handleCreateInvoice(deps, { clientIp: '1.2.3.4' })
+
+    const result = await handleCreateInvoice(deps, { clientIp: '1.2.3.4' })
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('rate limit')
+    expect(result.status).toBe(429)
+  })
+
+  it('allows invoices when under limit', async () => {
+    const deps = makeDeps({ maxPendingPerIp: 5 })
+    const result = await handleCreateInvoice(deps, { clientIp: '1.2.3.4' })
+    expect(result.success).toBe(true)
+  })
+
+  it('does not rate limit when maxPendingPerIp is not set', async () => {
+    const storage = memoryStorage()
+    let counter = 0
+    const backend = mockBackend({
+      createInvoice: vi.fn().mockImplementation(async () => ({
+        bolt11: 'lnbc...',
+        paymentHash: 'a'.repeat(62) + String(counter++).padStart(2, '0'),
+      })),
+    })
+    const deps = makeDeps({ storage, backend })
+    // Create many invoices — all should succeed
+    for (let i = 0; i < 10; i++) {
+      const result = await handleCreateInvoice(deps, { clientIp: '1.2.3.4' })
+      expect(result.success).toBe(true)
+    }
+  })
+
+  it('does not rate limit when clientIp is not provided', async () => {
+    const storage = memoryStorage()
+    let counter = 0
+    const backend = mockBackend({
+      createInvoice: vi.fn().mockImplementation(async () => ({
+        bolt11: 'lnbc...',
+        paymentHash: 'a'.repeat(62) + String(counter++).padStart(2, '0'),
+      })),
+    })
+    const deps = makeDeps({ storage, backend, maxPendingPerIp: 1 })
+    await handleCreateInvoice(deps, {})
+    const result = await handleCreateInvoice(deps, {})
+    expect(result.success).toBe(true)
+  })
+})
+
+describe('caveats in create-invoice', () => {
+  it('passes caveats to mintMacaroon', async () => {
+    const deps = makeDeps()
+    const result = await handleCreateInvoice(deps, { caveats: ['route = /send', 'sender = example.com'] })
+    expect(result.success).toBe(true)
+    // Verify by parsing the macaroon
+    const { parseCaveats } = await import('../macaroon.js')
+    const caveats = parseCaveats(result.data!.macaroon)
+    expect(caveats.route).toBe('/send')
+    expect(caveats.sender).toBe('example.com')
+  })
+})

@@ -12,6 +12,7 @@ export interface CreateInvoiceDeps {
   rootKey: string
   tiers: CreditTier[]
   defaultAmount: number
+  maxPendingPerIp?: number
 }
 
 /**
@@ -26,6 +27,13 @@ export async function handleCreateInvoice(
   request: CreateInvoiceRequest,
 ): Promise<CreateInvoiceResult> {
   try {
+    if (deps.maxPendingPerIp && request.clientIp) {
+      const pending = deps.storage.pendingInvoiceCount(request.clientIp)
+      if (pending >= deps.maxPendingPerIp) {
+        return { success: false, error: 'Invoice creation rate limit exceeded', status: 429 }
+      }
+    }
+
     const requestedAmount = request.amountSats ?? deps.defaultAmount
 
     if (!Number.isInteger(requestedAmount) || requestedAmount < 1) {
@@ -61,10 +69,10 @@ export async function handleCreateInvoice(
       paymentHash = randomBytes(32).toString('hex')
     }
 
-    const macaroon = mintMacaroon(deps.rootKey, paymentHash, creditSats)
+    const macaroon = mintMacaroon(deps.rootKey, paymentHash, creditSats, request.caveats)
     const statusToken = randomBytes(32).toString('hex')
 
-    deps.storage.storeInvoice(paymentHash, bolt11 ?? '', creditSats, macaroon, statusToken)
+    deps.storage.storeInvoice(paymentHash, bolt11 ?? '', creditSats, macaroon, statusToken, request.clientIp)
 
     const qrSvg = bolt11
       ? await QRCode.toString(
