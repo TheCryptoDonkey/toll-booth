@@ -6,6 +6,7 @@ import { createHonoTollBooth, type TollBoothEnv } from './hono.js'
 import { memoryStorage } from '../storage/memory.js'
 import { createTollBooth } from '../core/toll-booth.js'
 import { mintMacaroon } from '../macaroon.js'
+import type { StorageBackend } from '../storage/interface.js'
 
 // -- Helpers ------------------------------------------------------------------
 
@@ -150,5 +151,96 @@ describe('createHonoTollBooth', () => {
     expect(res.status).toBe(402)
     const body = await res.json() as Record<string, unknown>
     expect(body.error).toBe('Payment required')
+  })
+})
+
+// -- Helpers for payment route tests ------------------------------------------
+
+function createPaymentTestApp(storage: StorageBackend, rootKey: string) {
+  const { engine } = createTestEngine()
+  const tollBooth = createHonoTollBooth({ engine })
+  const paymentApp = tollBooth.createPaymentApp({
+    storage,
+    rootKey,
+    tiers: [],
+    defaultAmount: 1000,
+  })
+  const app = new Hono()
+  app.route('/', paymentApp)
+  return app
+}
+
+describe('Hono payment routes', () => {
+  it('POST /create-invoice creates an invoice', async () => {
+    const { storage, rootKey } = createTestEngine()
+    const app = createPaymentTestApp(storage, rootKey)
+
+    const res = await app.request('/create-invoice', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+
+    expect(res.status).toBe(200)
+    const body = await res.json() as Record<string, unknown>
+    expect(body).toHaveProperty('payment_hash')
+    expect(body).toHaveProperty('macaroon')
+    expect(typeof body.payment_hash).toBe('string')
+    expect(typeof body.macaroon).toBe('string')
+  })
+
+  it('GET /invoice-status/:hash returns invoice status', async () => {
+    const { storage, rootKey } = createTestEngine()
+    const app = createPaymentTestApp(storage, rootKey)
+
+    // Create invoice first
+    const createRes = await app.request('/create-invoice', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+    expect(createRes.status).toBe(200)
+    const created = await createRes.json() as Record<string, unknown>
+    const paymentUrl = created.payment_url as string
+
+    // Check status via payment_url (strip leading slash for routing)
+    const statusRes = await app.request(paymentUrl)
+    expect(statusRes.status).toBe(200)
+    const statusBody = await statusRes.json() as Record<string, unknown>
+    expect(statusBody).toHaveProperty('paid')
+    expect(statusBody.paid).toBe(false)
+  })
+
+  it('GET /invoice-status/:hash returns HTML when Accept: text/html', async () => {
+    const { storage, rootKey } = createTestEngine()
+    const app = createPaymentTestApp(storage, rootKey)
+
+    // Create invoice first
+    const createRes = await app.request('/create-invoice', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+    expect(createRes.status).toBe(200)
+    const created = await createRes.json() as Record<string, unknown>
+    const paymentUrl = created.payment_url as string
+
+    const statusRes = await app.request(paymentUrl, {
+      headers: { Accept: 'text/html' },
+    })
+    expect(statusRes.status).toBe(200)
+    const contentType = statusRes.headers.get('content-type') ?? ''
+    expect(contentType).toContain('text/html')
+  })
+
+  it('GET /invoice-status/:hash returns 404 for unknown invoice', async () => {
+    const { storage, rootKey } = createTestEngine()
+    const app = createPaymentTestApp(storage, rootKey)
+
+    const unknownHash = 'a'.repeat(64)
+    const res = await app.request(`/invoice-status/${unknownHash}`)
+    expect(res.status).toBe(404)
+    const body = await res.json() as Record<string, unknown>
+    expect(body).toHaveProperty('error')
   })
 })
