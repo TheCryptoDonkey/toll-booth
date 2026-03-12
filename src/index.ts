@@ -33,6 +33,12 @@ export type { WebStandardHandler, WebStandardMiddlewareConfig } from './adapters
 // Hono adapter types (implementation at @thecryptodonkey/toll-booth/hono)
 export type { HonoTollBoothConfig, HonoTollBooth, PaymentAppConfig, TollBoothEnv } from './adapters/hono.js'
 
+// Payment rails
+export type { PaymentRail, PriceInfo, PricingEntry, ChallengeFragment, RailVerifyResult, SettleResult, Currency } from './core/payment-rail.js'
+export { normalisePricing, normalisePricingTable } from './core/payment-rail.js'
+export { createL402Rail } from './core/l402-rail.js'
+export type { L402RailConfig } from './core/l402-rail.js'
+
 // Utilities
 export { mintMacaroon, verifyMacaroon, parseCaveats } from './macaroon.js'
 export type { VerifyContext, VerifyResult } from './macaroon.js'

@@ -1,5 +1,6 @@
 // src/booth.ts
 import type { BoothConfig, EventHandler } from './types.js'
+import { normalisePricingTable } from './core/payment-rail.js'
 import type { StorageBackend } from './storage/interface.js'
 import type { TollBoothEngine } from './core/toll-booth.js'
 import type { CreateInvoiceDeps } from './core/create-invoice.js'
@@ -97,10 +98,13 @@ export class Booth {
     const userOnChallenge = config.onChallenge
     const stats = this.stats
 
+    const normalisedPricing = normalisePricingTable(config.pricing)
+
     this.engine = createTollBooth({
       backend: config.backend,
       storage: this.storage,
       pricing: config.pricing,
+      normalisedPricing,
       upstream: config.upstream,
       defaultInvoiceAmount: defaultAmount,
       rootKey: this.rootKey,

@@ -41,15 +41,17 @@ export function createTollBooth(config: TollBoothCoreConfig): TollBoothEngine {
     async handle(req: TollBoothRequest): Promise<TollBoothResult> {
       const start = Date.now()
       const path = req.path
-      const pricedCost = config.pricing[path]
+      const pricedEntry = config.pricing[path]
 
       // Unpriced routes: pass through unless strictPricing is enabled
-      if (pricedCost === undefined && !config.strictPricing) {
+      if (pricedEntry === undefined && !config.strictPricing) {
         return { action: 'pass', upstream, headers: {} }
       }
 
-      // Effective cost: explicit pricing, or defaultInvoiceAmount when strictPricing
-      const cost = pricedCost ?? defaultAmount
+      // Effective cost in sats: explicit pricing, or defaultInvoiceAmount when strictPricing
+      const cost = pricedEntry !== undefined
+        ? (typeof pricedEntry === 'number' ? pricedEntry : (pricedEntry.sats ?? defaultAmount))
+        : defaultAmount
 
       // Try each rail
       for (const rail of rails) {

@@ -48,13 +48,16 @@ export interface LightningBackend {
   checkInvoice(paymentHash: string): Promise<InvoiceStatus>
 }
 
+import type { PricingEntry } from './core/payment-rail.js'
+
 /**
- * Pricing table mapping route patterns to amounts in satoshis.
+ * Pricing table mapping route patterns to amounts.
  *
- * Keys are route patterns (e.g. `"/route"`) and values are the
- * required payment amount in satoshis.
+ * Keys are route patterns (e.g. `"/route"`). Values are either a number
+ * (satoshis, backward-compatible) or a PriceInfo object for dual-currency
+ * pricing (e.g. `{ sats: 10, usd: 1 }`).
  */
-export type PricingTable = Record<string, number>
+export type PricingTable = Record<string, PricingEntry>
 
 /**
  * A credit tier offering volume discounts.

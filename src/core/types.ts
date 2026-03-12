@@ -1,7 +1,7 @@
 // src/core/types.ts
 import type { LightningBackend, CreditTier, PaymentEvent, RequestEvent, ChallengeEvent } from '../types.js'
 import type { StorageBackend, StoredInvoice } from '../storage/interface.js'
-import type { PaymentRail, PriceInfo } from './payment-rail.js'
+import type { PaymentRail, PriceInfo, PricingEntry } from './payment-rail.js'
 
 /** Matches a valid 64-char lowercase hex payment hash. */
 export const PAYMENT_HASH_RE = /^[0-9a-f]{64}$/
@@ -29,7 +29,7 @@ export interface TollBoothCoreConfig {
   /** Lightning backend. Optional when Cashu-only mode is used. */
   backend?: LightningBackend
   storage: StorageBackend
-  pricing: Record<string, number>
+  pricing: Record<string, PricingEntry>
   upstream: string
   defaultInvoiceAmount?: number
   strictPricing?: boolean
