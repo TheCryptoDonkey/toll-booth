@@ -7,7 +7,7 @@ export type { AdapterType, BoothOptions } from './booth.js'
 // Core engine (power users)
 export { createTollBooth } from './core/toll-booth.js'
 export type { TollBoothEngine } from './core/toll-booth.js'
-export type { TollBoothRequest, TollBoothResult, TollBoothCoreConfig } from './core/types.js'
+export type { TollBoothRequest, TollBoothResult, TollBoothCoreConfig, ReconcileResult } from './core/types.js'
 
 // Core handlers
 export { handleCreateInvoice } from './core/create-invoice.js'
@@ -33,6 +33,7 @@ export type { WebStandardHandler, WebStandardMiddlewareConfig } from './adapters
 
 // Utilities
 export { mintMacaroon, verifyMacaroon, parseCaveats } from './macaroon.js'
+export type { VerifyContext, VerifyResult } from './macaroon.js'
 export { FreeTier } from './free-tier.js'
 export { StatsCollector } from './stats.js'
 export { renderPaymentPage, renderErrorPage } from './payment-page.js'
