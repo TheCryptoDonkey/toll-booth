@@ -169,6 +169,24 @@ export function createExpressMiddleware(
           res.setHeader(key, value)
         }
         const buf = Buffer.from(await upstream_res.arrayBuffer())
+
+        // Reconcile estimated cost against actual cost reported by the upstream.
+        // Only applies to L402-authenticated requests (result has paymentHash).
+        if (result.action === 'proxy' && result.paymentHash) {
+          const tollCostHeader = upstream_res.headers.get('x-toll-cost')
+          if (tollCostHeader !== null) {
+            const actualCost = parseInt(tollCostHeader, 10)
+            if (Number.isFinite(actualCost) && actualCost >= 0) {
+              const reconciled = engine.reconcile(result.paymentHash, actualCost)
+              if (reconciled.adjusted) {
+                res.setHeader('X-Credit-Balance', String(reconciled.newBalance))
+              }
+            } else {
+              console.warn(`[toll-booth] Invalid X-Toll-Cost value: ${tollCostHeader}`)
+            }
+          }
+        }
+
         res.status(upstream_res.status).send(buf)
         return
       }

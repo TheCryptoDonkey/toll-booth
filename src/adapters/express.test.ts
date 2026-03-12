@@ -190,6 +190,234 @@ describe('Express adapter', () => {
     }
   })
 
+  describe('X-Toll-Cost reconciliation', () => {
+    function makeEngine() {
+      const backend = mockBackend()
+      const storage = memoryStorage()
+      const engine = createTollBooth({
+        backend,
+        storage,
+        pricing: { '/route': 10 },
+        upstream: 'http://127.0.0.1:0',
+        rootKey: ROOT_KEY,
+      })
+      return engine
+    }
+
+    /**
+     * Creates a real upstream HTTP server that responds with `X-Toll-Cost` set
+     * to `tollCost` (or omits it when `tollCost` is undefined).
+     */
+    async function makeUpstream(tollCost?: string): Promise<{ port: number; close: () => void }> {
+      const { createServer: createHttpServer } = await import('node:http')
+      const upstream = createHttpServer((_req, res) => {
+        const headers: Record<string, string> = { 'Content-Type': 'text/plain' }
+        if (tollCost !== undefined) headers['X-Toll-Cost'] = tollCost
+        res.writeHead(200, headers)
+        res.end('ok')
+      })
+      await new Promise<void>((r) => upstream.listen(0, r))
+      const port = (upstream.address() as { port: number }).port
+      return { port, close: () => upstream.close() }
+    }
+
+    it('calls engine.reconcile when X-Toll-Cost header is present', async () => {
+      const engine = makeEngine()
+      const upstream = await makeUpstream('7')
+
+      // Mock handle to return an authenticated proxy result with a known paymentHash.
+      const handleSpy = vi.spyOn(engine, 'handle').mockResolvedValue({
+        action: 'proxy',
+        upstream: `http://127.0.0.1:${upstream.port}`,
+        headers: { 'X-Credit-Balance': '90' },
+        paymentHash: 'a'.repeat(64),
+        estimatedCost: 10,
+        creditBalance: 90,
+      })
+      const reconcileSpy = vi.spyOn(engine, 'reconcile').mockReturnValue({ adjusted: true, newBalance: 93, delta: 3 })
+
+      const app = express()
+      app.use('/route', createExpressMiddleware({ engine, upstream: `http://127.0.0.1:${upstream.port}` }))
+
+      try {
+        await request(app, '/route', { method: 'GET' })
+        expect(reconcileSpy).toHaveBeenCalledWith('a'.repeat(64), 7)
+      } finally {
+        upstream.close()
+        handleSpy.mockRestore()
+        reconcileSpy.mockRestore()
+      }
+    })
+
+    it('does not call reconcile when X-Toll-Cost is absent', async () => {
+      const engine = makeEngine()
+      const upstream = await makeUpstream(/* no toll cost */)
+
+      const handleSpy = vi.spyOn(engine, 'handle').mockResolvedValue({
+        action: 'proxy',
+        upstream: `http://127.0.0.1:${upstream.port}`,
+        headers: { 'X-Credit-Balance': '90' },
+        paymentHash: 'a'.repeat(64),
+        estimatedCost: 10,
+        creditBalance: 90,
+      })
+      const reconcileSpy = vi.spyOn(engine, 'reconcile')
+
+      const app = express()
+      app.use('/route', createExpressMiddleware({ engine, upstream: `http://127.0.0.1:${upstream.port}` }))
+
+      try {
+        await request(app, '/route', { method: 'GET' })
+        expect(reconcileSpy).not.toHaveBeenCalled()
+      } finally {
+        upstream.close()
+        handleSpy.mockRestore()
+        reconcileSpy.mockRestore()
+      }
+    })
+
+    it('updates X-Credit-Balance in response after reconciliation', async () => {
+      const engine = makeEngine()
+      const upstream = await makeUpstream('3')
+
+      const handleSpy = vi.spyOn(engine, 'handle').mockResolvedValue({
+        action: 'proxy',
+        upstream: `http://127.0.0.1:${upstream.port}`,
+        headers: { 'X-Credit-Balance': '90' },
+        paymentHash: 'a'.repeat(64),
+        estimatedCost: 10,
+        creditBalance: 90,
+      })
+      const reconcileSpy = vi.spyOn(engine, 'reconcile').mockReturnValue({ adjusted: true, newBalance: 97, delta: 7 })
+
+      const app = express()
+      app.use('/route', createExpressMiddleware({ engine, upstream: `http://127.0.0.1:${upstream.port}` }))
+
+      try {
+        const res = await request(app, '/route', { method: 'GET' })
+        expect(res.headers.get('x-credit-balance')).toBe('97')
+      } finally {
+        upstream.close()
+        handleSpy.mockRestore()
+        reconcileSpy.mockRestore()
+      }
+    })
+
+    it('ignores non-numeric X-Toll-Cost values', async () => {
+      const engine = makeEngine()
+      const upstream = await makeUpstream('banana')
+
+      const handleSpy = vi.spyOn(engine, 'handle').mockResolvedValue({
+        action: 'proxy',
+        upstream: `http://127.0.0.1:${upstream.port}`,
+        headers: { 'X-Credit-Balance': '90' },
+        paymentHash: 'a'.repeat(64),
+        estimatedCost: 10,
+        creditBalance: 90,
+      })
+      const reconcileSpy = vi.spyOn(engine, 'reconcile')
+
+      const app = express()
+      app.use('/route', createExpressMiddleware({ engine, upstream: `http://127.0.0.1:${upstream.port}` }))
+
+      try {
+        const res = await request(app, '/route', { method: 'GET' })
+        expect(res.status).toBe(200)
+        expect(reconcileSpy).not.toHaveBeenCalled()
+      } finally {
+        upstream.close()
+        handleSpy.mockRestore()
+        reconcileSpy.mockRestore()
+      }
+    })
+
+    it('ignores negative X-Toll-Cost values', async () => {
+      const engine = makeEngine()
+      const upstream = await makeUpstream('-5')
+
+      const handleSpy = vi.spyOn(engine, 'handle').mockResolvedValue({
+        action: 'proxy',
+        upstream: `http://127.0.0.1:${upstream.port}`,
+        headers: { 'X-Credit-Balance': '90' },
+        paymentHash: 'a'.repeat(64),
+        estimatedCost: 10,
+        creditBalance: 90,
+      })
+      const reconcileSpy = vi.spyOn(engine, 'reconcile')
+
+      const app = express()
+      app.use('/route', createExpressMiddleware({ engine, upstream: `http://127.0.0.1:${upstream.port}` }))
+
+      try {
+        const res = await request(app, '/route', { method: 'GET' })
+        expect(res.status).toBe(200)
+        expect(reconcileSpy).not.toHaveBeenCalled()
+      } finally {
+        upstream.close()
+        handleSpy.mockRestore()
+        reconcileSpy.mockRestore()
+      }
+    })
+
+    it('handles zero X-Toll-Cost (free request)', async () => {
+      const engine = makeEngine()
+      const upstream = await makeUpstream('0')
+
+      const handleSpy = vi.spyOn(engine, 'handle').mockResolvedValue({
+        action: 'proxy',
+        upstream: `http://127.0.0.1:${upstream.port}`,
+        headers: { 'X-Credit-Balance': '90' },
+        paymentHash: 'a'.repeat(64),
+        estimatedCost: 10,
+        creditBalance: 90,
+      })
+      const reconcileSpy = vi.spyOn(engine, 'reconcile').mockReturnValue({ adjusted: true, newBalance: 100, delta: 10 })
+
+      const app = express()
+      app.use('/route', createExpressMiddleware({ engine, upstream: `http://127.0.0.1:${upstream.port}` }))
+
+      try {
+        const res = await request(app, '/route', { method: 'GET' })
+        expect(res.status).toBe(200)
+        expect(reconcileSpy).toHaveBeenCalledWith('a'.repeat(64), 0)
+        expect(res.headers.get('x-credit-balance')).toBe('100')
+      } finally {
+        upstream.close()
+        handleSpy.mockRestore()
+        reconcileSpy.mockRestore()
+      }
+    })
+
+    it('truncates fractional X-Toll-Cost values to integer', async () => {
+      const engine = makeEngine()
+      const upstream = await makeUpstream('5.9')
+
+      const handleSpy = vi.spyOn(engine, 'handle').mockResolvedValue({
+        action: 'proxy',
+        upstream: `http://127.0.0.1:${upstream.port}`,
+        headers: { 'X-Credit-Balance': '90' },
+        paymentHash: 'a'.repeat(64),
+        estimatedCost: 10,
+        creditBalance: 90,
+      })
+      const reconcileSpy = vi.spyOn(engine, 'reconcile').mockReturnValue({ adjusted: true, newBalance: 95, delta: 5 })
+
+      const app = express()
+      app.use('/route', createExpressMiddleware({ engine, upstream: `http://127.0.0.1:${upstream.port}` }))
+
+      try {
+        const res = await request(app, '/route', { method: 'GET' })
+        expect(res.status).toBe(200)
+        // parseInt('5.9', 10) === 5
+        expect(reconcileSpy).toHaveBeenCalledWith('a'.repeat(64), 5)
+      } finally {
+        upstream.close()
+        handleSpy.mockRestore()
+        reconcileSpy.mockRestore()
+      }
+    })
+  })
+
   it('does not allow absolute-form request targets to override the configured upstream host', async () => {
     const backend = mockBackend()
     const storage = memoryStorage()
