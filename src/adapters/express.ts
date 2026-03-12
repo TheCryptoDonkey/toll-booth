@@ -176,13 +176,13 @@ export function createExpressMiddleware(
           const tollCostHeader = upstream_res.headers.get('x-toll-cost')
           if (tollCostHeader !== null) {
             const actualCost = parseInt(tollCostHeader, 10)
-            if (Number.isFinite(actualCost) && actualCost >= 0) {
+            if (Number.isSafeInteger(actualCost) && actualCost >= 0) {
               const reconciled = engine.reconcile(result.paymentHash, actualCost)
               if (reconciled.adjusted) {
                 res.setHeader('X-Credit-Balance', String(reconciled.newBalance))
               }
             } else {
-              console.warn(`[toll-booth] Invalid X-Toll-Cost value: ${tollCostHeader}`)
+              console.warn('[toll-booth] Invalid X-Toll-Cost value:', tollCostHeader?.slice(0, 32))
             }
           }
         }

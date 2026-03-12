@@ -390,6 +390,34 @@ describe('Web Standard adapter', () => {
         fetchSpy.mockRestore()
       }
     })
+
+    it('ignores X-Toll-Cost values exceeding Number.MAX_SAFE_INTEGER', async () => {
+      const engine = makeEngine()
+
+      const handleSpy = vi.spyOn(engine, 'handle').mockResolvedValue({
+        action: 'proxy',
+        upstream: 'http://upstream.test',
+        headers: { 'X-Credit-Balance': '90' },
+        paymentHash: 'a'.repeat(64),
+        estimatedCost: 10,
+        creditBalance: 90,
+      })
+      const reconcileSpy = vi.spyOn(engine, 'reconcile')
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response('ok', { status: 200, headers: { 'X-Toll-Cost': '99999999999999999999' } }),
+      )
+
+      try {
+        const handler = createWebStandardMiddleware({ engine, upstream: 'http://upstream.test' })
+        const res = await handler(new Request('http://localhost/route', { method: 'GET' }))
+        expect(res.status).toBe(200)
+        expect(reconcileSpy).not.toHaveBeenCalled()
+      } finally {
+        handleSpy.mockRestore()
+        reconcileSpy.mockRestore()
+        fetchSpy.mockRestore()
+      }
+    })
   })
 
   it('rejects oversized JSON bodies without reading them into memory', async () => {

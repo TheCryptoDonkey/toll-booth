@@ -416,6 +416,34 @@ describe('Express adapter', () => {
         reconcileSpy.mockRestore()
       }
     })
+
+    it('ignores X-Toll-Cost values exceeding Number.MAX_SAFE_INTEGER', async () => {
+      const engine = makeEngine()
+      const upstream = await makeUpstream('99999999999999999999')
+
+      const handleSpy = vi.spyOn(engine, 'handle').mockResolvedValue({
+        action: 'proxy',
+        upstream: `http://127.0.0.1:${upstream.port}`,
+        headers: { 'X-Credit-Balance': '90' },
+        paymentHash: 'a'.repeat(64),
+        estimatedCost: 10,
+        creditBalance: 90,
+      })
+      const reconcileSpy = vi.spyOn(engine, 'reconcile')
+
+      const app = express()
+      app.use('/route', createExpressMiddleware({ engine, upstream: `http://127.0.0.1:${upstream.port}` }))
+
+      try {
+        const res = await request(app, '/route', { method: 'GET' })
+        expect(res.status).toBe(200)
+        expect(reconcileSpy).not.toHaveBeenCalled()
+      } finally {
+        upstream.close()
+        handleSpy.mockRestore()
+        reconcileSpy.mockRestore()
+      }
+    })
   })
 
   it('does not allow absolute-form request targets to override the configured upstream host', async () => {
