@@ -63,6 +63,43 @@ describe('memoryStorage', () => {
     })
   })
 
+  // --- adjustCredits ---
+
+  describe('adjustCredits', () => {
+    it('refunds credits (positive delta)', () => {
+      storage.credit('hash1', 100)
+      const newBalance = storage.adjustCredits('hash1', 50)
+      expect(newBalance).toBe(150)
+      expect(storage.balance('hash1')).toBe(150)
+    })
+
+    it('deducts additional credits (negative delta)', () => {
+      storage.credit('hash1', 100)
+      const newBalance = storage.adjustCredits('hash1', -30)
+      expect(newBalance).toBe(70)
+      expect(storage.balance('hash1')).toBe(70)
+    })
+
+    it('clamps balance to zero on over-deduction', () => {
+      storage.credit('hash1', 50)
+      const newBalance = storage.adjustCredits('hash1', -100)
+      expect(newBalance).toBe(0)
+      expect(storage.balance('hash1')).toBe(0)
+    })
+
+    it('works on non-existent payment hash (creates entry)', () => {
+      const newBalance = storage.adjustCredits('hash1', 100)
+      expect(newBalance).toBe(100)
+      expect(storage.balance('hash1')).toBe(100)
+    })
+
+    it('zero delta is a no-op', () => {
+      storage.credit('hash1', 100)
+      const newBalance = storage.adjustCredits('hash1', 0)
+      expect(newBalance).toBe(100)
+    })
+  })
+
   // --- Settle ---
 
   describe('settle', () => {

@@ -23,6 +23,8 @@ export interface StorageBackend {
   credit(paymentHash: string, amount: number): void
   debit(paymentHash: string, amount: number): DebitResult
   balance(paymentHash: string): number
+  /** Adjust credits by delta. Positive = refund, negative = additional charge. Clamps to zero. Returns new balance. */
+  adjustCredits(paymentHash: string, delta: number): number
   /** Atomically mark a payment hash as settled. Returns true if newly settled, false if already was. */
   settle(paymentHash: string): boolean
   /** Check whether a payment hash has been settled. */

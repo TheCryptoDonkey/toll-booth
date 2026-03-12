@@ -40,6 +40,13 @@ export function memoryStorage(): StorageBackend {
       return balances.get(paymentHash) ?? 0
     },
 
+    adjustCredits(paymentHash: string, delta: number): number {
+      const current = balances.get(paymentHash) ?? 0
+      const newBalance = Math.max(0, current + delta)
+      balances.set(paymentHash, newBalance)
+      return newBalance
+    },
+
     settle(paymentHash: string): boolean {
       if (settled.has(paymentHash)) return false
       settled.set(paymentHash, undefined)
