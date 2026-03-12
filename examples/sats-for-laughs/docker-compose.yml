@@ -1,0 +1,26 @@
+services:
+  phoenixd:
+    image: ghcr.io/acinq/phoenixd:latest
+    restart: always
+    ports:
+      - "127.0.0.1:9740:9740"
+    volumes:
+      - phoenixd-data:/root/.phoenix
+    command: ["--agree-to-terms-of-service", "--http-bind-ip", "0.0.0.0"]
+
+  sats-for-laughs:
+    build:
+      context: ../../
+      dockerfile: examples/sats-for-laughs/Dockerfile
+    restart: always
+    ports:
+      - "0.0.0.0:3000:3000"
+    env_file: .env
+    volumes:
+      - app-data:/data
+    depends_on:
+      - phoenixd
+
+volumes:
+  phoenixd-data:
+  app-data:
