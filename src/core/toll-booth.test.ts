@@ -381,6 +381,51 @@ describe('strictPricing', () => {
   })
 })
 
+describe('caveat verification and forwarding', () => {
+  it('rejects expired macaroon', async () => {
+    const { preimage, paymentHash } = makePreimageAndHash()
+    const storage = memoryStorage()
+    const engine = createTollBooth(makeConfig({ storage }))
+
+    const past = new Date(Date.now() - 1000).toISOString()
+    const macaroon = mintMacaroon(ROOT_KEY, paymentHash, 1000, [`expires = ${past}`])
+    const result = await engine.handle(makeRequest({
+      headers: { authorization: `L402 ${macaroon}:${preimage}` },
+    }))
+    expect(result.action).toBe('challenge')
+  })
+
+  it('rejects route-restricted macaroon on wrong path', async () => {
+    const { preimage, paymentHash } = makePreimageAndHash()
+    const storage = memoryStorage()
+    const engine = createTollBooth(makeConfig({ storage }))
+
+    const macaroon = mintMacaroon(ROOT_KEY, paymentHash, 1000, ['route = /other'])
+    const result = await engine.handle(makeRequest({
+      path: '/route',
+      headers: { authorization: `L402 ${macaroon}:${preimage}` },
+    }))
+    expect(result.action).toBe('challenge')
+  })
+
+  it('forwards custom caveats as X-Toll-Caveat-* headers', async () => {
+    const { preimage, paymentHash } = makePreimageAndHash()
+    const storage = memoryStorage()
+    const engine = createTollBooth(makeConfig({ storage }))
+
+    const macaroon = mintMacaroon(ROOT_KEY, paymentHash, 1000, ['model = llama3', 'plan = premium'])
+    const result = await engine.handle(makeRequest({
+      headers: { authorization: `L402 ${macaroon}:${preimage}` },
+    }))
+
+    expect(result.action).toBe('proxy')
+    if (result.action === 'proxy') {
+      expect(result.headers['X-Toll-Caveat-Model']).toBe('llama3')
+      expect(result.headers['X-Toll-Caveat-Plan']).toBe('premium')
+    }
+  })
+})
+
 describe('Cashu-only mode (no Lightning backend)', () => {
   function makeCashuConfig(overrides: Partial<TollBoothCoreConfig> = {}): TollBoothCoreConfig {
     return {

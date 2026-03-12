@@ -1,6 +1,6 @@
 // src/core/toll-booth.ts
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
-import { mintMacaroon, verifyMacaroon } from '../macaroon.js'
+import { mintMacaroon, verifyMacaroon, type VerifyContext } from '../macaroon.js'
 import { FreeTier } from '../free-tier.js'
 import type { StorageBackend } from '../storage/interface.js'
 import type { TollBoothRequest, TollBoothResult, TollBoothCoreConfig, ReconcileResult } from './types.js'
@@ -41,7 +41,7 @@ export function createTollBooth(config: TollBoothCoreConfig): TollBoothEngine {
       // Check for L402 Authorisation header
       const authHeader = req.headers['authorization'] ?? req.headers['Authorization']
       if (authHeader?.startsWith('L402 ')) {
-        const result = handleL402Auth(authHeader, config.rootKey, config.storage, cost, defaultAmount)
+        const result = handleL402Auth(authHeader, config.rootKey, config.storage, cost, defaultAmount, path, req.ip)
         if (result.authorised) {
           if (result.creditedAmount) {
             config.onPayment?.({
@@ -60,10 +60,16 @@ export function createTollBooth(config: TollBoothCoreConfig): TollBoothEngine {
             clientIp: req.ip,
           })
           estimatedCosts.set(result.paymentHash!, cost)
+          const headers: Record<string, string> = { 'X-Credit-Balance': String(result.remaining) }
+          if (result.customCaveats) {
+            for (const [key, value] of Object.entries(result.customCaveats)) {
+              headers[`X-Toll-Caveat-${key.charAt(0).toUpperCase() + key.slice(1)}`] = value
+            }
+          }
           return {
             action: 'proxy',
             upstream,
-            headers: { 'X-Credit-Balance': String(result.remaining) },
+            headers,
             creditBalance: result.remaining,
             paymentHash: result.paymentHash,
             estimatedCost: cost,
@@ -169,7 +175,9 @@ function handleL402Auth(
   storage: StorageBackend,
   cost: number,
   defaultAmount: number,
-): { authorised: boolean; remaining: number; paymentHash?: string; creditedAmount?: number } {
+  path: string,
+  ip: string,
+): { authorised: boolean; remaining: number; paymentHash?: string; creditedAmount?: number; customCaveats?: Record<string, string> } {
   try {
     const token = authHeader.slice(5) // Remove "L402 "
     const colonIdx = token.lastIndexOf(':')
@@ -178,7 +186,8 @@ function handleL402Auth(
     const macaroonBase64 = token.slice(0, colonIdx)
     const preimage = token.slice(colonIdx + 1)
 
-    const result = verifyMacaroon(rootKey, macaroonBase64)
+    const context: VerifyContext = { path, ip }
+    const result = verifyMacaroon(rootKey, macaroonBase64, context)
     if (!result.valid || !result.paymentHash) return { authorised: false, remaining: 0 }
 
     // Verify suffix proof:
@@ -215,7 +224,7 @@ function handleL402Auth(
     const debit = storage.debit(result.paymentHash, cost)
     if (!debit.success) return { authorised: false, remaining: debit.remaining }
 
-    return { authorised: true, remaining: debit.remaining, paymentHash: result.paymentHash, creditedAmount }
+    return { authorised: true, remaining: debit.remaining, paymentHash: result.paymentHash, creditedAmount, customCaveats: result.customCaveats }
   } catch (err) {
     console.error('[toll-booth] L402 auth error:', err instanceof Error ? err.message : err)
     return { authorised: false, remaining: 0 }
