@@ -1,6 +1,6 @@
 # CLAUDE.md — toll-booth
 
-L402 middleware — gates any HTTP API behind Lightning payments. Supports Express and Web Standard (Deno, Bun, Cloudflare Workers).
+L402 middleware — gates any HTTP API behind Lightning payments. Supports Express, Web Standard (Deno, Bun, Cloudflare Workers), and Hono.
 
 ## Commands
 
@@ -37,6 +37,7 @@ src/
   adapters/
     express.ts              # Express 5 middleware + handlers
     web-standard.ts         # Web Standard (Request/Response) handlers (Deno, Bun, Workers)
+    hono.ts                 # Hono middleware + payment route sub-app
     proxy-headers.ts        # X-Forwarded-For / X-Real-IP parsing
   backends/
     phoenixd.ts             # Phoenixd Lightning backend (HTTP API)
@@ -45,10 +46,13 @@ src/
     lnbits.ts               # LNbits Lightning backend (REST API)
     alby.ts                 # Alby / NWC Lightning backend
     conformance.ts          # Shared backend conformance test factory
+  core/
+    security.test.ts        # Security hardening tests (header injection, entropy, validation)
   e2e/
     l402-flow.integration.test.ts
     cashu-only.integration.test.ts
     cashu-redeem.integration.test.ts
+    variable-metering-caveats.integration.test.ts
 
 examples/
   valhalla-proxy/           # Complete Docker Compose reference deployment (Express)
@@ -77,7 +81,9 @@ Backend conformance tests (`conformance.ts`) export a shared factory; each backe
 5. Client sends `Authorization: L402 <macaroon>:<preimage>`
 6. Macaroon verified, credit granted, request proxied upstream with `X-Credit-Balance` header
 
-**Booth class** is a facade that wires together the engine, storage, and adapter. Constructor takes `adapter: 'express' | 'web-standard'` to select framework integration. One `new Booth(config)` call exposes `.middleware`, `.invoiceStatusHandler`, `.createInvoiceHandler`, and optional `.nwcPayHandler` / `.cashuRedeemHandler`.
+**Booth class** is a facade that wires together the engine, storage, and adapter. Constructor takes `adapter: 'express' | 'web-standard' | 'hono'` to select framework integration. One `new Booth(config)` call exposes `.middleware`, `.invoiceStatusHandler`, `.createInvoiceHandler`, and optional `.nwcPayHandler` / `.cashuRedeemHandler`. For Hono, use `createHonoTollBooth()` directly for more idiomatic integration (auth middleware + payment route sub-app).
+
+**Hono adapter** (`createHonoTollBooth()`) provides an auth middleware and a `createPaymentApp()` factory that returns a Hono sub-app with `/create-invoice`, `/invoice-status/:paymentHash`, and optional `/nwc-pay` and `/cashu-redeem` routes. Context variables (`TollBoothEnv`) expose payment state to downstream handlers.
 
 **Core engine** (`createTollBooth()`) is framework-agnostic — adapters translate between framework requests and `TollBoothRequest`/`TollBoothResult`. Core handlers (`handleCreateInvoice`, `handleNwcPay`, `handleCashuRedeem`) follow the same pattern.
 

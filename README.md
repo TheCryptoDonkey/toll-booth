@@ -105,6 +105,7 @@ curl -H "Authorization: L402 <macaroon>:<preimage>" https://jokes.trotters.dev/a
 - **Free tier** - configurable daily allowance per IP
 - **Self-service payment page** - QR codes, tier selector, wallet adapter buttons
 - **SQLite persistence** - WAL mode, automatic invoice expiry pruning
+- **Three framework adapters** - Express, Web Standard (Deno/Bun/Workers), and Hono
 - **Framework-agnostic core** - use the `Booth` facade or wire handlers directly
 
 ---
@@ -168,6 +169,45 @@ Deno.serve({ port: 3000 }, async (req: Request) => {
     return booth.createInvoiceHandler(req)
   return booth.middleware(req)
 })
+```
+
+### Hono
+
+```typescript
+import { Hono } from 'hono'
+import { createHonoTollBooth, type TollBoothEnv } from '@thecryptodonkey/toll-booth/hono'
+import { phoenixdBackend } from '@thecryptodonkey/toll-booth/backends/phoenixd'
+import { createTollBooth } from '@thecryptodonkey/toll-booth'
+import { sqliteStorage } from '@thecryptodonkey/toll-booth/storage/sqlite'
+
+const storage = sqliteStorage({ path: './toll-booth.db' })
+const engine = createTollBooth({
+  backend: phoenixdBackend({ url: 'http://localhost:9740', password: process.env.PHOENIXD_PASSWORD! }),
+  storage,
+  pricing: { '/api': 10 },
+  upstream: 'http://localhost:8080',
+  rootKey: process.env.ROOT_KEY!,
+})
+
+const tollBooth = createHonoTollBooth({ engine })
+const app = new Hono<TollBoothEnv>()
+
+// Mount payment routes
+app.route('/', tollBooth.createPaymentApp({
+  storage,
+  rootKey: process.env.ROOT_KEY!,
+  tiers: [],
+  defaultAmount: 1000,
+}))
+
+// Gate your API
+app.use('/api/*', tollBooth.authMiddleware)
+app.get('/api/resource', (c) => {
+  const balance = c.get('tollBoothCreditBalance')
+  return c.json({ message: 'Paid content', balance })
+})
+
+export default app
 ```
 
 ### Cashu-only (no Lightning node)
@@ -276,7 +316,7 @@ Deploy toll-booth as a sidecar (Docker Compose, Kubernetes) or as a standalone g
 
 ## Production checklist
 
-- Set a persistent `rootKey` (64 hex chars / 32 bytes), otherwise tokens are invalidated on restart.
+- **Set a persistent `rootKey`** (64 hex chars / 32 bytes). Without it, a random key is generated per restart and all existing macaroons become invalid. Generate one with: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
 - Use a persistent `dbPath` (default: `./toll-booth.db`).
 - Enable `strictPricing: true` to prevent unpriced routes from bypassing billing.
 - Ensure your `pricing` keys match the paths the middleware actually sees (after mounting).
@@ -347,7 +387,7 @@ The five most common options:
 
 | Option | Type | Description |
 |--------|------|-------------|
-| `adapter` | `'express' \| 'web-standard'` | Framework integration to use |
+| `adapter` | `'express' \| 'web-standard' \| 'hono'` | Framework integration to use |
 | `backend` | `LightningBackend` | Lightning node (optional if using Cashu-only) |
 | `pricing` | `Record<string, number>` | Route pattern to cost in sats |
 | `upstream` | `string` | URL to proxy authorised requests to |
