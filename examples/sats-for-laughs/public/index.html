@@ -271,6 +271,57 @@
     display: inline-block;
   }
 
+  /* Tier selector */
+  .tiers {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: center;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+  }
+
+  .tier-btn {
+    flex: 1;
+    min-width: 100px;
+    padding: 0.6rem 0.5rem;
+    border-radius: 0.5rem;
+    border: 1.5px solid rgba(249, 115, 22, 0.3);
+    background: rgba(249, 115, 22, 0.05);
+    color: #e2e8f0;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.8rem;
+    text-align: center;
+    transition: all 0.2s ease;
+  }
+
+  .tier-btn:hover {
+    border-color: rgba(249, 115, 22, 0.6);
+    background: rgba(249, 115, 22, 0.12);
+  }
+
+  .tier-btn.active {
+    border-color: #f97316;
+    background: rgba(249, 115, 22, 0.18);
+  }
+
+  .tier-label {
+    font-weight: 600;
+    font-size: 0.85rem;
+    margin-bottom: 0.15rem;
+  }
+
+  .tier-price {
+    color: #94a3b8;
+    font-size: 0.75rem;
+  }
+
+  .tier-bonus {
+    color: #4ade80;
+    font-size: 0.7rem;
+    font-weight: 600;
+  }
+
   /* Main action button */
   .action-btn {
     display: block;
@@ -431,13 +482,13 @@
   }
 
   // -- Topic pills --
+  // Only set the filter; the next "Tell me another one!" click uses it
   topicPills.forEach(function (pill) {
     pill.addEventListener('click', function () {
       topicPills.forEach(function (p) { p.classList.remove('active'); });
       pill.classList.add('active');
       var topic = pill.dataset.topic;
       activeTopic = topic === 'all' ? null : topic;
-      fetchJoke(activeTopic);
     });
   });
 
@@ -550,13 +601,17 @@
   }
 
   // -- Show payment --
+  var paymentHeading = null;
+  var qrContainer = null;
+  var paymentPollDiv = null;
+
   async function showPayment(challengeData) {
     // Show prompt in joke area using safe DOM methods
     jokeArea.textContent = '';
     var promptDiv = document.createElement('div');
     promptDiv.style.textAlign = 'center';
     promptDiv.style.color = '#94a3b8';
-    promptDiv.textContent = 'Your free jokes are used up for today. Pay 21 sats to keep the laughs coming!';
+    promptDiv.textContent = 'Your free jokes are used up for today. Pick a bundle and keep the laughs coming!';
     jokeArea.appendChild(promptDiv);
     jokeArea.classList.remove('fading');
 
@@ -564,12 +619,112 @@
     actionBtn.disabled = true;
     statusLine.textContent = '';
 
-    // Call /create-invoice to get QR SVG and full invoice data
+    // Build payment area shell (tiers + QR + buttons)
+    paymentArea.textContent = '';
+
+    // Tier selector - fetch tiers by sending an invalid amount first
+    var tiersDiv = document.createElement('div');
+    tiersDiv.className = 'tiers';
+    var tiers = [
+      { amountSats: 21, creditSats: 21, label: '1 joke' },
+      { amountSats: 100, creditSats: 105, label: '5 jokes' },
+      { amountSats: 210, creditSats: 252, label: '12 jokes' },
+    ];
+
+    tiers.forEach(function (tier, i) {
+      var btn = document.createElement('button');
+      btn.className = 'tier-btn' + (i === 0 ? ' active' : '');
+      btn.dataset.amount = tier.amountSats;
+
+      var label = document.createElement('div');
+      label.className = 'tier-label';
+      label.textContent = tier.label;
+      btn.appendChild(label);
+
+      var price = document.createElement('div');
+      price.className = 'tier-price';
+      price.textContent = tier.amountSats + ' sats';
+      btn.appendChild(price);
+
+      if (tier.creditSats > tier.amountSats) {
+        var bonus = document.createElement('div');
+        bonus.className = 'tier-bonus';
+        var pct = Math.round(((tier.creditSats - tier.amountSats) / tier.amountSats) * 100);
+        bonus.textContent = '+' + pct + '% bonus';
+        btn.appendChild(bonus);
+      }
+
+      btn.addEventListener('click', function () {
+        tiersDiv.querySelectorAll('.tier-btn').forEach(function (b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+        loadInvoice(tier.amountSats);
+      });
+
+      tiersDiv.appendChild(btn);
+    });
+    paymentArea.appendChild(tiersDiv);
+
+    paymentHeading = document.createElement('div');
+    paymentHeading.className = 'payment-heading';
+    paymentArea.appendChild(paymentHeading);
+
+    var subtext = document.createElement('div');
+    subtext.className = 'payment-subtext';
+    subtext.textContent = 'Any Lightning wallet will do';
+    paymentArea.appendChild(subtext);
+
+    qrContainer = document.createElement('div');
+    qrContainer.className = 'qr-container';
+    paymentArea.appendChild(qrContainer);
+
+    var actions = document.createElement('div');
+    actions.className = 'payment-actions';
+
+    var copyBtn = document.createElement('button');
+    copyBtn.className = 'btn-copy';
+    copyBtn.id = 'btn-copy';
+    copyBtn.title = 'Copy Lightning invoice';
+    copyBtn.textContent = 'Copy invoice';
+    copyBtn.addEventListener('click', function () { copyInvoice(); });
+    actions.appendChild(copyBtn);
+
+    if (window.webln) {
+      var weblnBtn = document.createElement('button');
+      weblnBtn.className = 'btn-webln';
+      weblnBtn.id = 'btn-webln';
+      weblnBtn.textContent = 'Pay with WebLN';
+      weblnBtn.addEventListener('click', function () { payWebLN(currentBolt11); });
+      actions.appendChild(weblnBtn);
+    }
+
+    paymentArea.appendChild(actions);
+
+    paymentPollDiv = document.createElement('div');
+    paymentPollDiv.className = 'poll-status';
+    var miniSpinner = document.createElement('span');
+    miniSpinner.className = 'mini-spinner';
+    paymentPollDiv.appendChild(miniSpinner);
+    paymentPollDiv.appendChild(document.createTextNode(' Waiting for payment...'));
+    paymentArea.appendChild(paymentPollDiv);
+
+    paymentArea.classList.add('visible');
+
+    // Load the default tier invoice
+    await loadInvoice(tiers[0].amountSats);
+  }
+
+  async function loadInvoice(amountSats) {
+    stopPolling();
+
+    if (paymentHeading) paymentHeading.textContent = 'Scan to pay ' + amountSats + ' sats';
+    if (qrContainer) qrContainer.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div></div>';
+    if (paymentPollDiv) paymentPollDiv.style.display = '';
+
     try {
       var invoiceRes = await fetch('/create-invoice', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amountSats: challengeData.amount_sats }),
+        body: JSON.stringify({ amountSats: amountSats }),
       });
 
       if (!invoiceRes.ok) {
@@ -580,60 +735,10 @@
       var inv = await invoiceRes.json();
       currentBolt11 = inv.bolt11;
 
-      // Build payment area using DOM methods
-      paymentArea.textContent = '';
+      if (paymentHeading) paymentHeading.textContent = 'Scan to pay ' + inv.amount_sats + ' sats';
+      if (qrContainer) qrContainer.innerHTML = inv.qr_svg; // trusted: generated by our own server via qrcode lib
 
-      var heading = document.createElement('div');
-      heading.className = 'payment-heading';
-      heading.textContent = 'Scan to pay ' + inv.amount_sats + ' sats';
-      paymentArea.appendChild(heading);
-
-      var subtext = document.createElement('div');
-      subtext.className = 'payment-subtext';
-      subtext.textContent = 'Any Lightning wallet will do';
-      paymentArea.appendChild(subtext);
-
-      // QR code container - qr_svg is trusted server-generated SVG
-      var qrContainer = document.createElement('div');
-      qrContainer.className = 'qr-container';
-      qrContainer.innerHTML = inv.qr_svg; // trusted: generated by our own server via qrcode lib
-      paymentArea.appendChild(qrContainer);
-
-      var actions = document.createElement('div');
-      actions.className = 'payment-actions';
-
-      var copyBtn = document.createElement('button');
-      copyBtn.className = 'btn-copy';
-      copyBtn.id = 'btn-copy';
-      copyBtn.title = 'Copy Lightning invoice';
-      copyBtn.textContent = 'Copy invoice';
-      copyBtn.addEventListener('click', function () { copyInvoice(); });
-      actions.appendChild(copyBtn);
-
-      if (window.webln) {
-        var weblnBtn = document.createElement('button');
-        weblnBtn.className = 'btn-webln';
-        weblnBtn.id = 'btn-webln';
-        weblnBtn.textContent = 'Pay with WebLN';
-        weblnBtn.addEventListener('click', function () { payWebLN(inv.bolt11); });
-        actions.appendChild(weblnBtn);
-      }
-
-      paymentArea.appendChild(actions);
-
-      var pollDiv = document.createElement('div');
-      pollDiv.className = 'poll-status';
-      var miniSpinner = document.createElement('span');
-      miniSpinner.className = 'mini-spinner';
-      pollDiv.appendChild(miniSpinner);
-      pollDiv.appendChild(document.createTextNode(' Waiting for payment...'));
-      paymentArea.appendChild(pollDiv);
-
-      paymentArea.classList.add('visible');
-
-      // Start polling
       startPolling(inv.payment_url, inv.macaroon);
-
     } catch (err) {
       showError('Failed to create invoice. Try again?');
     }

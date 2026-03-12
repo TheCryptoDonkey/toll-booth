@@ -88,6 +88,11 @@ const booth = new Booth({
   upstream: `http://localhost:${UPSTREAM_PORT}`,
   freeTier: { requestsPerDay: 1 },
   defaultInvoiceAmount: 21,
+  creditTiers: [
+    { amountSats: 21, creditSats: 21, label: '1 joke' },
+    { amountSats: 100, creditSats: 105, label: '5 jokes' },
+    { amountSats: 210, creditSats: 252, label: '12 jokes' },
+  ],
   rootKey: process.env.ROOT_KEY || randomBytes(32).toString('hex'),
   trustProxy: true,
   onRequest: (event) => {
