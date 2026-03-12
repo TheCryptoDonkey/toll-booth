@@ -193,7 +193,17 @@ export function createWebStandardMiddleware(
           statusText: res.statusText,
           headers: responseHeaders,
         })
-      } catch {
+      } catch (err) {
+        // Distinguish upstream network errors from timeouts
+        if (err instanceof DOMException && (err.name === 'TimeoutError' || err.name === 'AbortError')) {
+          return Response.json(
+            { error: 'Upstream timeout' },
+            { status: 504, headers: new Headers(extraHeaders) },
+          )
+        }
+        if (!(err instanceof TypeError)) {
+          console.error('[toll-booth] Unexpected error in middleware:', err instanceof Error ? err.message : err)
+        }
         return Response.json(
           { error: 'Upstream unavailable' },
           { status: 502, headers: new Headers(extraHeaders) },

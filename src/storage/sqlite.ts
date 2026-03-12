@@ -1,4 +1,5 @@
 // src/storage/sqlite.ts
+import { timingSafeEqual } from 'node:crypto'
 import Database from 'better-sqlite3'
 import type { StorageBackend, DebitResult, StoredInvoice, PendingClaim } from './interface.js'
 
@@ -114,10 +115,10 @@ export function sqliteStorage(config?: SqliteStorageConfig): StorageBackend {
     'SELECT payment_hash, bolt11, amount_sats, macaroon, created_at FROM invoices WHERE payment_hash = ?'
   )
 
-  const stmtGetInvoiceForStatus = db.prepare(
-    `SELECT payment_hash, bolt11, amount_sats, macaroon, created_at
+  const stmtGetInvoiceWithToken = db.prepare(
+    `SELECT payment_hash, bolt11, amount_sats, macaroon, status_token, created_at
      FROM invoices
-     WHERE payment_hash = ? AND status_token = ?`
+     WHERE payment_hash = ?`
   )
 
   const stmtSettle = db.prepare(
@@ -347,14 +348,19 @@ export function sqliteStorage(config?: SqliteStorageConfig): StorageBackend {
     },
 
     getInvoiceForStatus(paymentHash: string, statusToken: string): StoredInvoice | undefined {
-      const row = stmtGetInvoiceForStatus.get(paymentHash, statusToken) as {
+      const row = stmtGetInvoiceWithToken.get(paymentHash) as {
         payment_hash: string
         bolt11: string
         amount_sats: number
         macaroon: string
+        status_token: string
         created_at: string
       } | undefined
       if (!row) return undefined
+      // Timing-safe comparison to prevent token enumeration via timing side-channel
+      const storedBuf = Buffer.from(row.status_token)
+      const providedBuf = Buffer.from(statusToken)
+      if (storedBuf.length !== providedBuf.length || !timingSafeEqual(storedBuf, providedBuf)) return undefined
       return {
         paymentHash: row.payment_hash,
         bolt11: row.bolt11,

@@ -18,8 +18,11 @@ export function createTollBooth(config: TollBoothCoreConfig): TollBoothEngine {
   const freeTier = config.freeTier ? new FreeTier(config.freeTier.requestsPerDay) : null
 
   // In-memory map is intentional: reconcile() is always called within the same request-response
-  // cycle by the adapter, so persistence is not needed.
-  const estimatedCosts = new Map<string, number>()
+  // cycle by the adapter, so persistence is not needed. Entries are evicted after MAX_AGE_MS
+  // to prevent unbounded growth when reconcile() is never called.
+  const MAX_ESTIMATED_COSTS = 10_000
+  const MAX_AGE_MS = 60_000
+  const estimatedCosts = new Map<string, { cost: number; ts: number }>()
 
   return {
     freeTier,
@@ -59,7 +62,14 @@ export function createTollBooth(config: TollBoothCoreConfig): TollBoothEngine {
             authenticated: true,
             clientIp: req.ip,
           })
-          estimatedCosts.set(result.paymentHash!, cost)
+          // Evict stale entries to prevent unbounded growth
+          if (estimatedCosts.size >= MAX_ESTIMATED_COSTS) {
+            const now = Date.now()
+            for (const [key, entry] of estimatedCosts) {
+              if (now - entry.ts > MAX_AGE_MS) estimatedCosts.delete(key)
+            }
+          }
+          estimatedCosts.set(result.paymentHash!, { cost, ts: Date.now() })
           const headers: Record<string, string> = { 'X-Credit-Balance': String(result.remaining) }
           if (result.customCaveats) {
             for (const [key, value] of Object.entries(result.customCaveats)) {
@@ -151,11 +161,11 @@ export function createTollBooth(config: TollBoothCoreConfig): TollBoothEngine {
     },
 
     reconcile(paymentHash: string, actualCost: number): ReconcileResult {
-      const estimated = estimatedCosts.get(paymentHash)
-      if (estimated === undefined) {
+      const entry = estimatedCosts.get(paymentHash)
+      if (entry === undefined) {
         return { adjusted: false, newBalance: config.storage.balance(paymentHash), delta: 0 }
       }
-      const delta = estimated - actualCost
+      const delta = entry.cost - actualCost
       if (delta === 0) {
         return { adjusted: false, newBalance: config.storage.balance(paymentHash), delta: 0 }
       }

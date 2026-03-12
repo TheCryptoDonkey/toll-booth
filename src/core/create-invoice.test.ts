@@ -262,4 +262,38 @@ describe('caveats in create-invoice', () => {
     expect(caveats.route).toBe('/send')
     expect(caveats.sender).toBe('example.com')
   })
+
+  it('rejects reserved caveat key payment_hash', async () => {
+    const deps = makeDeps()
+    const result = await handleCreateInvoice(deps, { caveats: ['payment_hash = deadbeef'] })
+    expect(result.success).toBe(false)
+    expect(result.error).toMatch(/reserved/)
+  })
+
+  it('rejects reserved caveat key credit_balance', async () => {
+    const deps = makeDeps()
+    const result = await handleCreateInvoice(deps, { caveats: ['credit_balance = 999999'] })
+    expect(result.success).toBe(false)
+    expect(result.error).toMatch(/reserved/)
+  })
+
+  it('allows attenuation caveats like route and expires', async () => {
+    const deps = makeDeps()
+    const result = await handleCreateInvoice(deps, { caveats: ['route = /api/*', 'expires = 2099-01-01T00:00:00Z'] })
+    expect(result.success).toBe(true)
+  })
+
+  it('rejects non-array caveats', async () => {
+    const deps = makeDeps()
+    const result = await handleCreateInvoice(deps, { caveats: 'not-an-array' as unknown as string[] })
+    expect(result.success).toBe(false)
+    expect(result.error).toMatch(/array/)
+  })
+
+  it('rejects non-string caveat elements', async () => {
+    const deps = makeDeps()
+    const result = await handleCreateInvoice(deps, { caveats: [123 as unknown as string] })
+    expect(result.success).toBe(false)
+    expect(result.error).toMatch(/array of strings/)
+  })
 })

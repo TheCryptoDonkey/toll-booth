@@ -72,7 +72,7 @@ export class Booth {
     if (!/^[0-9a-fA-F]{64}$/.test(rootKeyInput)) {
       throw new Error('rootKey must be exactly 64 hex characters (32 bytes)')
     }
-    this.rootKey = rootKeyInput
+    this.rootKey = rootKeyInput.toLowerCase()
 
     if (config.storage && config.dbPath) {
       throw new Error('Provide either storage or dbPath, not both')

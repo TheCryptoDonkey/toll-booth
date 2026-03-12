@@ -6,6 +6,9 @@ import type { StorageBackend } from '../storage/interface.js'
 import { mintMacaroon } from '../macaroon.js'
 import type { CreateInvoiceRequest, CreateInvoiceResult } from './types.js'
 
+/** Caveat keys that control monetary value and must not be set by clients. */
+const RESERVED_CAVEAT_KEYS = new Set(['payment_hash', 'credit_balance'])
+
 export interface CreateInvoiceDeps {
   backend?: LightningBackend
   storage: StorageBackend
@@ -31,6 +34,25 @@ export async function handleCreateInvoice(
       const pending = deps.storage.pendingInvoiceCount(request.clientIp)
       if (pending >= deps.maxPendingPerIp) {
         return { success: false, error: 'Invoice creation rate limit exceeded', status: 429 }
+      }
+    }
+
+    // Validate caveats input type and reject built-in caveat keys
+    if (request.caveats !== undefined) {
+      if (!Array.isArray(request.caveats)) {
+        return { success: false, error: 'caveats must be an array of strings' }
+      }
+      for (const c of request.caveats) {
+        if (typeof c !== 'string') {
+          return { success: false, error: 'caveats must be an array of strings' }
+        }
+        const eqIdx = c.indexOf(' = ')
+        if (eqIdx !== -1) {
+          const key = c.slice(0, eqIdx).trim()
+          if (RESERVED_CAVEAT_KEYS.has(key)) {
+            return { success: false, error: `caveat key "${key}" is reserved and cannot be set by clients` }
+          }
+        }
       }
     }
 
