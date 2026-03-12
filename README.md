@@ -7,7 +7,7 @@
 
 ![toll-booth demo](demo/toll-booth-demo.gif)
 
-[Live demo](https://jokes.trotters.dev/api/joke) - pay 21 sats, get a joke. No account. No sign-up.
+[Live demo](https://jokes.trotters.dev/) - pay 21 sats, get a joke. No account. No sign-up. ([API](https://jokes.trotters.dev/api/joke))
 
 ### Try it now
 
@@ -77,6 +77,10 @@ An agent using Claude, GPT, or any MCP-capable model can call your API, receive 
 ---
 
 ## Live demo
+
+Visit [jokes.trotters.dev](https://jokes.trotters.dev/) in a browser to try it - get a free joke, hit the paywall, scan the QR code or pay with a browser wallet extension.
+
+Or use the API directly:
 
 ```bash
 # Get a free joke (1 free per day per IP)
@@ -286,7 +290,7 @@ Deploy toll-booth as a sidecar (Docker Compose, Kubernetes) or as a standalone g
 
 ### sats-for-laughs - build your own paid API
 
-[`examples/sats-for-laughs/`](examples/sats-for-laughs/) is the fastest path from "I have an API" to "my API earns sats". It's the same code that runs the [live demo](https://jokes.trotters.dev/api/joke). Clone it, change three env vars, deploy.
+[`examples/sats-for-laughs/`](examples/sats-for-laughs/) is the fastest path from "I have an API" to "my API earns sats". It's the same code that runs the [live demo](https://jokes.trotters.dev/). Includes a web frontend with QR codes and wallet adapter buttons, plus a JSON API for programmatic access. Clone it, change three env vars, deploy.
 
 ```bash
 cd examples/sats-for-laughs
