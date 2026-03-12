@@ -45,7 +45,7 @@ export function clnBackend(config: ClnConfig): LightningBackend {
 
       if (!res.ok) {
         const text = await res.text().catch(() => '')
-        throw new Error(`CLN createInvoice failed (${res.status}): ${text}`)
+        throw new Error(`CLN createInvoice failed (${res.status}): ${text.slice(0, 200)}`)
       }
 
       const data = await res.json() as { bolt11: string; payment_hash: string }
@@ -61,7 +61,7 @@ export function clnBackend(config: ClnConfig): LightningBackend {
 
       if (!res.ok) {
         const text = await res.text().catch(() => '')
-        throw new Error(`CLN checkInvoice failed (${res.status}): ${text}`)
+        throw new Error(`CLN checkInvoice failed (${res.status}): ${text.slice(0, 200)}`)
       }
 
       const data = await res.json() as {

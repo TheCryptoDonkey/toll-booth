@@ -1001,4 +1001,26 @@ describe('Booth', () => {
 
     booth.close()
   })
+
+  it('warns when rootKey is auto-generated', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const booth = new Booth({
+      adapter: 'web-standard',
+      backend: {
+        createInvoice: vi.fn().mockResolvedValue({ bolt11: 'lnbc...', paymentHash: 'a'.repeat(64) }),
+        checkInvoice: vi.fn().mockResolvedValue({ paid: false }),
+      },
+      pricing: {},
+      upstream: 'http://localhost:8000',
+      storage: memoryStorage(),
+      getClientIp: () => '127.0.0.1',
+    })
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('rootKey not provided'),
+    )
+
+    booth.close()
+    warnSpy.mockRestore()
+  })
 })

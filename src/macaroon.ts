@@ -3,6 +3,9 @@ import { newMacaroon, importMacaroon } from 'macaroon'
 const LOCATION = 'toll-booth'
 const KNOWN_CAVEATS = new Set(['payment_hash', 'credit_balance', 'route', 'expires', 'ip'])
 
+/** Caveat keys that encode monetary value and must not be set via the caveats parameter. */
+const RESERVED_CAVEAT_KEYS = new Set(['payment_hash', 'credit_balance'])
+
 /**
  * Mints a new macaroon encoding a payment hash and credit balance.
  *
@@ -28,6 +31,10 @@ export function mintMacaroon(rootKey: string, paymentHash: string, creditBalance
       }
       if (caveat.length > 1024) {
         throw new Error(`Caveat exceeds maximum length of 1024 characters`)
+      }
+      const key = caveat.slice(0, caveat.indexOf(' = ')).trim()
+      if (RESERVED_CAVEAT_KEYS.has(key)) {
+        throw new Error(`Caveat key "${key}" is reserved and cannot be overridden`)
       }
       m.addFirstPartyCaveat(caveat)
     }

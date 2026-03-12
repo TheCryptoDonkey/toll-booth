@@ -68,7 +68,16 @@ export class Booth {
       throw new Error('At least one payment method required: provide a Lightning backend, redeemCashu callback, or both')
     }
 
-    const rootKeyInput = config.rootKey ?? randomBytes(32).toString('hex')
+    let rootKeyInput: string
+    if (config.rootKey) {
+      rootKeyInput = config.rootKey
+    } else {
+      rootKeyInput = randomBytes(32).toString('hex')
+      console.warn(
+        '[toll-booth] WARNING: rootKey not provided; auto-generated a random key. ' +
+        'All macaroons will be invalidated on restart. Set ROOT_KEY for production use.',
+      )
+    }
     if (!/^[0-9a-fA-F]{64}$/.test(rootKeyInput)) {
       throw new Error('rootKey must be exactly 64 hex characters (32 bytes)')
     }

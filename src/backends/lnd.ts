@@ -48,7 +48,7 @@ export function lndBackend(config: LndConfig): LightningBackend {
 
       if (!res.ok) {
         const text = await res.text().catch(() => '')
-        throw new Error(`LND createinvoice failed (${res.status}): ${text}`)
+        throw new Error(`LND createinvoice failed (${res.status}): ${text.slice(0, 200)}`)
       }
 
       const data = await res.json() as { r_hash: string; payment_request: string }

@@ -263,3 +263,23 @@ describe('credit balance bounds checking', () => {
     expect(result.creditBalance).toBe(0)
   })
 })
+
+describe('reserved caveat key validation at mint time', () => {
+  const rootKey = 'a'.repeat(64)
+  const paymentHash = 'b'.repeat(64)
+
+  it('rejects payment_hash caveat in user-provided caveats', () => {
+    expect(() => mintMacaroon(rootKey, paymentHash, 1000, ['payment_hash = evil']))
+      .toThrow('reserved')
+  })
+
+  it('rejects credit_balance caveat in user-provided caveats', () => {
+    expect(() => mintMacaroon(rootKey, paymentHash, 1000, ['credit_balance = 999999']))
+      .toThrow('reserved')
+  })
+
+  it('allows non-reserved caveats', () => {
+    expect(() => mintMacaroon(rootKey, paymentHash, 1000, ['model = gpt4', 'route = /api/*']))
+      .not.toThrow()
+  })
+})

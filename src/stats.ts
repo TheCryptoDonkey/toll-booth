@@ -72,12 +72,14 @@ export class StatsCollector {
       this.requests.freeTier++
     }
 
-    const existing = this.endpoints.get(event.endpoint)
+    // Truncate endpoint path to prevent unbounded key growth from crafted URLs
+    const endpoint = event.endpoint.length > 256 ? event.endpoint.slice(0, 256) : event.endpoint
+    const existing = this.endpoints.get(endpoint)
     if (existing) {
       existing.requests++
       existing.satsConsumed += event.satsDeducted
     } else if (this.endpoints.size < MAX_TRACKED_ENDPOINTS) {
-      this.endpoints.set(event.endpoint, { requests: 1, satsConsumed: event.satsDeducted })
+      this.endpoints.set(endpoint, { requests: 1, satsConsumed: event.satsDeducted })
     }
 
     this.revenue.totalConsumed += event.satsDeducted

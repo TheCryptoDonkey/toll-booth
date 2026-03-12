@@ -42,7 +42,7 @@ export function phoenixdBackend(config: PhoenixdConfig): LightningBackend {
 
       if (!res.ok) {
         const text = await res.text().catch(() => '')
-        throw new Error(`Phoenixd createinvoice failed (${res.status}): ${text}`)
+        throw new Error(`Phoenixd createinvoice failed (${res.status}): ${text.slice(0, 200)}`)
       }
 
       const data = await res.json() as { paymentHash: string; serialized: string }
@@ -62,7 +62,7 @@ export function phoenixdBackend(config: PhoenixdConfig): LightningBackend {
       // Auth failures and server errors must propagate so health checks detect them
       if (!res.ok) {
         const text = await res.text().catch(() => '')
-        throw new Error(`Phoenixd checkInvoice failed (${res.status}): ${text}`)
+        throw new Error(`Phoenixd checkInvoice failed (${res.status}): ${text.slice(0, 200)}`)
       }
 
       const data = await res.json() as { isPaid: boolean; preimage?: string }

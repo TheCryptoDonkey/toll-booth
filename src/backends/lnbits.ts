@@ -45,7 +45,7 @@ export function lnbitsBackend(config: LNbitsConfig): LightningBackend {
 
       if (!res.ok) {
         const text = await res.text().catch(() => '')
-        throw new Error(`LNbits createInvoice failed (${res.status}): ${text}`)
+        throw new Error(`LNbits createInvoice failed (${res.status}): ${text.slice(0, 200)}`)
       }
 
       const data = await res.json() as { payment_hash: string; payment_request: string }
@@ -63,7 +63,7 @@ export function lnbitsBackend(config: LNbitsConfig): LightningBackend {
 
       if (!res.ok) {
         const text = await res.text().catch(() => '')
-        throw new Error(`LNbits checkInvoice failed (${res.status}): ${text}`)
+        throw new Error(`LNbits checkInvoice failed (${res.status}): ${text.slice(0, 200)}`)
       }
 
       const data = await res.json() as { paid: boolean; preimage?: string }
