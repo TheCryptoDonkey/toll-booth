@@ -17,5 +17,6 @@ RUN sed -i 's|file:../../|file:./toll-booth.tgz|' package.json
 RUN npm install
 COPY examples/sats-for-laughs/server.ts ./
 COPY examples/sats-for-laughs/jokes.json ./
+COPY examples/sats-for-laughs/public/ ./public/
 EXPOSE 3000
 CMD ["node", "--import", "tsx", "server.ts"]
