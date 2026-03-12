@@ -80,7 +80,7 @@ export function createL402Rail(config: L402RailConfig): PaymentRail {
       }
 
       const paymentHash = verification.paymentHash!
-      const creditBalance = verification.creditBalance!
+      const creditBalance = verification.creditBalance ?? defaultAmount
 
       // Verify preimage: Lightning (sha256) or Cashu (settlement secret)
       const isLightning = isValidLightningPreimage(preimage, paymentHash)
