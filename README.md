@@ -2,6 +2,9 @@
 
 [![MIT licence](https://img.shields.io/badge/licence-MIT-blue.svg)](./LICENSE)
 [![Nostr](https://img.shields.io/badge/Nostr-Zap%20me-purple)](https://primal.net/p/npub1mgvlrnf5hm9yf0n5mf9nqmvarhvxkc6remu5ec3vf8r0txqkuk7su0e7q2)
+[![npm](https://img.shields.io/npm/v/@thecryptodonkey/toll-booth)](https://www.npmjs.com/package/@thecryptodonkey/toll-booth)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue)](https://www.typescriptlang.org/)
+[![Node](https://img.shields.io/badge/Node-%3E%3D18-green)](https://nodejs.org/)
 
 **Monetise any API with one line of code.**
 
@@ -391,6 +394,16 @@ See [docs/configuration.md](docs/configuration.md) for the full reference includ
 **[Why L402?](docs/vision.md)** - the case for permissionless, machine-to-machine payments on the web.
 
 **[Architecture](docs/architecture.md)** - how toll-booth, token-toll, and l402-mcp fit together.
+
+---
+
+## Ecosystem
+
+| Project | Role |
+|---------|------|
+| **[toll-booth](https://github.com/TheCryptoDonkey/toll-booth)** | **Payment-rail agnostic HTTP 402 middleware** |
+| [token-toll](https://github.com/TheCryptoDonkey/token-toll) | Pay-per-token AI inference proxy (built on toll-booth) |
+| [l402-mcp](https://github.com/TheCryptoDonkey/l402-mcp) | MCP client — AI agents discover, pay, and consume L402 APIs |
 
 ---
 
