@@ -107,6 +107,20 @@ describe('handleInvoiceStatus', () => {
     expect(result.tokenSuffix).toBe('cashu-secret')
   })
 
+  // --- Backend temporarily unreachable ---
+
+  it('returns found + unpaid when backend throws', async () => {
+    const backend = mockBackend({
+      checkInvoice: vi.fn().mockRejectedValue(new Error('timeout')),
+    })
+    const deps = makeDeps({ backend })
+    const result = await handleInvoiceStatus(deps, PAYMENT_HASH, STATUS_TOKEN)
+    expect(result.found).toBe(true)
+    expect(result.paid).toBe(false)
+    expect(result.preimage).toBeUndefined()
+    expect(result.invoice).toBeDefined()
+  })
+
   // --- Invoice data ---
 
   it('includes invoice data in the result', async () => {
@@ -141,14 +155,14 @@ describe('renderInvoiceStatusHtml', () => {
     expect(html).toContain('<html')
   })
 
-  it('returns 502 HTML when backend throws', async () => {
+  it('returns 200 HTML with unpaid state when backend throws', async () => {
     const backend = mockBackend({
       checkInvoice: vi.fn().mockRejectedValue(new Error('timeout')),
     })
     const deps = makeDeps({ backend })
     const { html, status } = await renderInvoiceStatusHtml(deps, PAYMENT_HASH, STATUS_TOKEN)
-    expect(status).toBe(502)
-    expect(html).toContain('try again')
+    expect(status).toBe(200)
+    expect(html).toContain('<html')
   })
 
   it('renders paid state with preimage', async () => {

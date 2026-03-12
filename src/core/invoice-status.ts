@@ -39,13 +39,18 @@ export async function handleInvoiceStatus(
     }
   }
 
-  const status = await deps.backend.checkInvoice(paymentHash)
-  return {
-    found: true,
-    paid: status.paid,
-    preimage: status.preimage,
-    tokenSuffix: status.preimage ?? (status.paid ? deps.storage.getSettlementSecret(paymentHash) : undefined),
-    invoice,
+  try {
+    const status = await deps.backend.checkInvoice(paymentHash)
+    return {
+      found: true,
+      paid: status.paid,
+      preimage: status.preimage,
+      tokenSuffix: status.preimage ?? (status.paid ? deps.storage.getSettlementSecret(paymentHash) : undefined),
+      invoice,
+    }
+  } catch {
+    // Backend temporarily unreachable; report as unpaid so the client keeps polling
+    return { found: true, paid: false, invoice }
   }
 }
 
@@ -72,9 +77,15 @@ export async function renderInvoiceStatusHtml(
       }
     }
 
-    const status = deps.backend
-      ? await deps.backend.checkInvoice(paymentHash)
-      : { paid: deps.storage.isSettled(paymentHash), preimage: undefined }
+    let status: { paid: boolean; preimage?: string }
+    try {
+      status = deps.backend
+        ? await deps.backend.checkInvoice(paymentHash)
+        : { paid: deps.storage.isSettled(paymentHash), preimage: undefined }
+    } catch {
+      // Backend temporarily unreachable; render as unpaid so the client keeps polling
+      status = { paid: false, preimage: undefined }
+    }
     const html = await renderPaymentPage({
       invoice,
       paid: status.paid,
