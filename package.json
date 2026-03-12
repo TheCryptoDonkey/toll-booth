@@ -2,7 +2,7 @@
   "name": "@thecryptodonkey/toll-booth",
   "version": "1.1.2",
   "type": "module",
-  "description": "Any API becomes a Lightning toll booth in one line. L402 middleware for Express, Hono, Deno, Bun, and Workers.",
+  "description": "Monetise any API with HTTP 402 payments. Payment-rail agnostic middleware for Express, Hono, Deno, Bun, and Workers.",
   "license": "MIT",
   "keywords": [
     "l402",
