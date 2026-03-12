@@ -24,7 +24,7 @@ const RESET  = '\x1b[0m'
 
 // -- Mock Lightning backend ---------------------------------------------------
 
-function createMockBackend(storage: StorageBackend): LightningBackend {
+function createMockBackend(storage: StorageBackend, demoPort: number): LightningBackend {
   return {
     async createInvoice(amountSats: number, memo?: string): Promise<Invoice> {
       const preimage = randomBytes(32)
@@ -36,7 +36,16 @@ function createMockBackend(storage: StorageBackend): LightningBackend {
       // Auto-settle after ~1s to simulate instant payment
       setTimeout(() => {
         storage.settleWithCredit(paymentHash, amountSats, preimage.toString('hex'))
-        console.log(`  ${GREEN}[payment]${RESET} invoice settled: ${paymentHash.slice(0, 16)}...`)
+        console.log(`  ${GREEN}[paid]${RESET} invoice settled: ${paymentHash.slice(0, 16)}...`)
+
+        // Print the ready-to-use curl command so devs can try authenticated requests
+        const macaroon = storage.getInvoice(paymentHash)?.macaroon
+        if (macaroon) {
+          console.log('')
+          console.log(`  ${BOLD}Use your credits:${RESET}`)
+          console.log(`  ${DIM}$${RESET} curl -H "Authorization: L402 ${macaroon}:${preimage.toString('hex')}" http://localhost:${demoPort}/api/joke`)
+          console.log('')
+        }
       }, 1_000)
 
       return { bolt11, paymentHash }
@@ -106,7 +115,7 @@ async function sendWebResponse(webRes: Response, nodeRes: import('node:http').Se
 export async function startDemo(): Promise<void> {
   const port = parseInt(process.env.PORT ?? '3000', 10)
   const storage = memoryStorage()
-  const backend = createMockBackend(storage)
+  const backend = createMockBackend(storage, port)
   const rootKey = randomBytes(32).toString('hex')
 
   // Tiny upstream joke API on an ephemeral port
@@ -204,6 +213,9 @@ export async function startDemo(): Promise<void> {
                 console.log(`  ${BOLD}Scan to pay:${RESET}`)
                 console.log(qr)
                 console.log(`  ${DIM}Or open: http://localhost:${port}${body.payment_url}${RESET}`)
+                console.log('')
+                console.log(`  ${YELLOW}This is a demo - the mock payment will auto-settle in ~1s.${RESET}`)
+                console.log(`  ${DIM}Wait a moment, then check the terminal for your curl command.${RESET}`)
                 console.log('')
               }
             }
