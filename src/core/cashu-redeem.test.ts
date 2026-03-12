@@ -20,6 +20,22 @@ describe('handleCashuRedeem', () => {
     if (!result.success && 'error' in result) expect(result.status).toBe(400)
   })
 
+  it('rejects oversized cashu token', async () => {
+    const deps = createDeps()
+    const hash = 'a'.repeat(64)
+    const result = await handleCashuRedeem(deps, { token: 'x'.repeat(16_385), paymentHash: hash, statusToken: 'tok' })
+    expect(result.success).toBe(false)
+    if (!result.success && 'error' in result) expect(result.status).toBe(400)
+  })
+
+  it('rejects oversized statusToken', async () => {
+    const deps = createDeps()
+    const hash = 'a'.repeat(64)
+    const result = await handleCashuRedeem(deps, { token: 'cashuA...', paymentHash: hash, statusToken: 'x'.repeat(129) })
+    expect(result.success).toBe(false)
+    if (!result.success && 'error' in result) expect(result.status).toBe(400)
+  })
+
   it('returns 400 for unknown invoice', async () => {
     const deps = createDeps()
     const hash = 'a'.repeat(64)

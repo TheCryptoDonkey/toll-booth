@@ -17,9 +17,9 @@ export async function handleCashuRedeem(
   try {
     const { token, paymentHash, statusToken } = request
     if (
-      typeof token !== 'string' || !token ||
+      typeof token !== 'string' || !token || token.length > 16_384 ||
       !PAYMENT_HASH_RE.test(paymentHash) ||
-      typeof statusToken !== 'string' || !statusToken
+      typeof statusToken !== 'string' || !statusToken || statusToken.length > 128
     ) {
       return { success: false, error: 'Invalid request: token, paymentHash, and statusToken required', status: 400 }
     }

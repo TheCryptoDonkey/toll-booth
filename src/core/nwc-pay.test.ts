@@ -73,6 +73,34 @@ describe('handleNwcPay', () => {
     expect(deps.nwcPay).toHaveBeenCalledWith('nostr+walletconnect://abc', 'lnbc_stored')
   })
 
+  it('rejects oversized nwcUri', async () => {
+    const deps = createDeps()
+    const hash = 'a'.repeat(64)
+    deps.storage.storeInvoice(hash, 'lnbc_stored', 1000, 'mac', 'tok123')
+    const result = await handleNwcPay(deps, {
+      nwcUri: 'x'.repeat(2049),
+      bolt11: 'lnbc_stored',
+      paymentHash: hash,
+      statusToken: 'tok123',
+    })
+    expect(result.success).toBe(false)
+    if (!result.success) expect(result.status).toBe(400)
+  })
+
+  it('rejects oversized statusToken', async () => {
+    const deps = createDeps()
+    const hash = 'a'.repeat(64)
+    deps.storage.storeInvoice(hash, 'lnbc_stored', 1000, 'mac', 'tok123')
+    const result = await handleNwcPay(deps, {
+      nwcUri: 'nostr+walletconnect://abc',
+      bolt11: 'lnbc_stored',
+      paymentHash: hash,
+      statusToken: 'x'.repeat(129),
+    })
+    expect(result.success).toBe(false)
+    if (!result.success) expect(result.status).toBe(400)
+  })
+
   it('returns 500 when nwcPay throws', async () => {
     const deps = createDeps({
       nwcPay: vi.fn().mockRejectedValue(new Error('wallet offline')),

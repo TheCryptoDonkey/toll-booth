@@ -226,7 +226,8 @@ export function createExpressInvoiceStatusHandler(
       res.status(400).json({ error: 'Invalid payment hash' })
       return
     }
-    const statusToken = typeof req.query.token === 'string' ? req.query.token : undefined
+    const rawToken = typeof req.query.token === 'string' ? req.query.token : undefined
+    const statusToken = rawToken && rawToken.length <= 128 ? rawToken : undefined
     const accept = req.headers.accept ?? ''
 
     try {

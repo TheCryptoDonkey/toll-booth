@@ -14,10 +14,10 @@ export async function handleNwcPay(
   try {
     const { nwcUri, bolt11, paymentHash, statusToken } = request
     if (
-      typeof nwcUri !== 'string' || !nwcUri ||
-      typeof bolt11 !== 'string' || !bolt11 ||
+      typeof nwcUri !== 'string' || !nwcUri || nwcUri.length > 2048 ||
+      typeof bolt11 !== 'string' || !bolt11 || bolt11.length > 2048 ||
       !PAYMENT_HASH_RE.test(paymentHash) ||
-      typeof statusToken !== 'string' || !statusToken
+      typeof statusToken !== 'string' || !statusToken || statusToken.length > 128
     ) {
       return { success: false, error: 'Invalid request: nwcUri, bolt11, paymentHash and statusToken required', status: 400 }
     }

@@ -234,7 +234,8 @@ export function createWebStandardInvoiceStatusHandler(
     if (!PAYMENT_HASH_RE.test(paymentHash)) {
       return Response.json({ error: 'Invalid payment hash' }, { status: 400 })
     }
-    const statusToken = url.searchParams.get('token') ?? undefined
+    const rawToken = url.searchParams.get('token') ?? undefined
+    const statusToken = rawToken && rawToken.length <= 128 ? rawToken : undefined
     const accept = req.headers.get('accept') ?? ''
 
     try {
