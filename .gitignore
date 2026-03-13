@@ -2,6 +2,7 @@ node_modules/
 dist/
 *.tgz
 .idea/
+.DS_Store
 valhalla-tiles/
 .env
 .env.*
