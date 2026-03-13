@@ -257,6 +257,34 @@ describe('sqliteStorage', () => {
     })
   })
 
+  describe('dual-currency', () => {
+    it('tracks sats and usd balances independently', () => {
+      const store = sqliteStorage({ path: ':memory:' })
+      store.settleWithCredit('hash-a', 1000)
+      store.settleWithCredit('hash-b', 500, undefined, 'usd')
+      expect(store.balance('hash-a')).toBe(1000)
+      expect(store.balance('hash-b', 'usd')).toBe(500)
+      store.close()
+    })
+
+    it('debits from correct currency column', () => {
+      const store = sqliteStorage({ path: ':memory:' })
+      store.settleWithCredit('hash-a', 1000, undefined, 'usd')
+      store.debit('hash-a', 100, 'usd')
+      expect(store.balance('hash-a', 'usd')).toBe(900)
+      expect(store.balance('hash-a')).toBe(0)  // sats untouched
+      store.close()
+    })
+
+    it('adjustCredits works with usd', () => {
+      const store = sqliteStorage({ path: ':memory:' })
+      store.settleWithCredit('hash-a', 1000, undefined, 'usd')
+      store.adjustCredits('hash-a', -200, 'usd')
+      expect(store.balance('hash-a', 'usd')).toBe(800)
+      store.close()
+    })
+  })
+
   it('prunes invoices older than maxAgeMs', () => {
     storage = sqliteStorage()
     storage.storeInvoice('h1', 'bolt11', 100, 'mac', 'tok1')

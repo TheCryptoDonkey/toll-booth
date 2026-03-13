@@ -1,6 +1,7 @@
 // src/storage/sqlite.ts
 import { timingSafeEqual } from 'node:crypto'
 import Database from 'better-sqlite3'
+import type { Currency } from '../core/payment-rail.js'
 import type { StorageBackend, DebitResult, StoredInvoice, PendingClaim } from './interface.js'
 
 const DEFAULT_LEASE_MS = 30_000
@@ -17,6 +18,8 @@ export function sqliteStorage(config?: SqliteStorageConfig): StorageBackend {
     CREATE TABLE IF NOT EXISTS credits (
       payment_hash TEXT PRIMARY KEY,
       balance INTEGER NOT NULL DEFAULT 0,
+      balance_sats INTEGER NOT NULL DEFAULT 0,
+      balance_usd INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     )
@@ -83,22 +86,59 @@ export function sqliteStorage(config?: SqliteStorageConfig): StorageBackend {
     // Column already exists — ignore
   }
 
-  const stmtCredit = db.prepare(`
-    INSERT INTO credits (payment_hash, balance)
-    VALUES (?, ?)
+  // Migration: add dual-currency balance columns to credits table.
+  try {
+    db.exec('ALTER TABLE credits ADD COLUMN balance_sats INTEGER NOT NULL DEFAULT 0')
+  } catch {
+    // Column already exists — ignore
+  }
+  try {
+    db.exec('ALTER TABLE credits ADD COLUMN balance_usd INTEGER NOT NULL DEFAULT 0')
+  } catch {
+    // Column already exists — ignore
+  }
+  // Copy legacy balance into balance_sats for existing rows.
+  db.exec('UPDATE credits SET balance_sats = balance WHERE balance > 0 AND balance_sats = 0')
+
+  // Per-currency prepared statements for credit operations
+  const stmtCreditSat = db.prepare(`
+    INSERT INTO credits (payment_hash, balance, balance_sats)
+    VALUES (?, ?, ?)
     ON CONFLICT(payment_hash) DO UPDATE SET
       balance = balance + excluded.balance,
+      balance_sats = balance_sats + excluded.balance_sats,
       updated_at = datetime('now')
   `)
 
-  const stmtDebit = db.prepare(`
-    UPDATE credits SET balance = balance - ?, updated_at = datetime('now')
-    WHERE payment_hash = ? AND balance >= ?
+  const stmtCreditUsd = db.prepare(`
+    INSERT INTO credits (payment_hash, balance_usd)
+    VALUES (?, ?)
+    ON CONFLICT(payment_hash) DO UPDATE SET
+      balance_usd = balance_usd + excluded.balance_usd,
+      updated_at = datetime('now')
   `)
 
-  const stmtBalance = db.prepare(
-    'SELECT balance FROM credits WHERE payment_hash = ?'
+  const stmtDebitSat = db.prepare(`
+    UPDATE credits SET balance = balance - ?, balance_sats = balance_sats - ?, updated_at = datetime('now')
+    WHERE payment_hash = ? AND balance_sats >= ?
+  `)
+
+  const stmtDebitUsd = db.prepare(`
+    UPDATE credits SET balance_usd = balance_usd - ?, updated_at = datetime('now')
+    WHERE payment_hash = ? AND balance_usd >= ?
+  `)
+
+  const stmtBalanceSat = db.prepare(
+    'SELECT balance_sats AS balance FROM credits WHERE payment_hash = ?'
   )
+
+  const stmtBalanceUsd = db.prepare(
+    'SELECT balance_usd AS balance FROM credits WHERE payment_hash = ?'
+  )
+
+  function creditFor(currency: Currency) { return currency === 'usd' ? stmtCreditUsd : stmtCreditSat }
+  function debitFor(currency: Currency) { return currency === 'usd' ? stmtDebitUsd : stmtDebitSat }
+  function balanceFor(currency: Currency) { return currency === 'usd' ? stmtBalanceUsd : stmtBalanceSat }
 
   const stmtStoreInvoice = db.prepare(`
     INSERT OR IGNORE INTO invoices (payment_hash, bolt11, amount_sats, macaroon, status_token, client_ip)
@@ -175,7 +215,7 @@ export function sqliteStorage(config?: SqliteStorageConfig): StorageBackend {
 
   const stmtPruneZeroCredits = db.prepare(`
     DELETE FROM credits
-    WHERE balance <= 0
+    WHERE balance_sats <= 0 AND balance_usd <= 0
       AND datetime(updated_at) <= datetime('now', '-' || ? || ' seconds')
   `)
 
@@ -198,10 +238,14 @@ export function sqliteStorage(config?: SqliteStorageConfig): StorageBackend {
     return r.changes > 0
   })
 
-  const txnSettleWithCredit = db.transaction((paymentHash: string, amount: number, settlementSecret?: string) => {
+  const txnSettleWithCredit = db.transaction((paymentHash: string, amount: number, settlementSecret?: string, currency: Currency = 'sat') => {
     const r = stmtSettle.run(paymentHash, settlementSecret ?? null)
     if (r.changes > 0) {
-      stmtCredit.run(paymentHash, amount)
+      if (currency === 'usd') {
+        stmtCreditUsd.run(paymentHash, amount)
+      } else {
+        stmtCreditSat.run(paymentHash, amount, amount)
+      }
       stmtDeleteClaim.run(paymentHash)
       return true
     }
@@ -224,30 +268,51 @@ export function sqliteStorage(config?: SqliteStorageConfig): StorageBackend {
     }
   })
 
-  const stmtAdjustCredits = db.prepare(`
-    UPDATE credits SET balance = MAX(0, balance + ?), updated_at = datetime('now')
+  const stmtAdjustCreditsSat = db.prepare(`
+    UPDATE credits SET
+      balance_sats = MAX(0, balance_sats + ?),
+      balance = MAX(0, balance + ?),
+      updated_at = datetime('now')
     WHERE payment_hash = ?
   `)
 
-  const txnAdjustCredits = db.transaction((paymentHash: string, delta: number): number => {
-    const row = stmtBalance.get(paymentHash) as { balance: number } | undefined
+  const stmtAdjustCreditsUsd = db.prepare(`
+    UPDATE credits SET balance_usd = MAX(0, balance_usd + ?), updated_at = datetime('now')
+    WHERE payment_hash = ?
+  `)
+
+  const txnAdjustCredits = db.transaction((paymentHash: string, delta: number, currency: Currency = 'sat'): number => {
+    const stmtBal = balanceFor(currency)
+    const row = stmtBal.get(paymentHash) as { balance: number } | undefined
     if (!row) {
       const newBalance = Math.max(0, delta)
-      stmtCredit.run(paymentHash, newBalance)
+      if (currency === 'usd') {
+        stmtCreditUsd.run(paymentHash, newBalance)
+      } else {
+        stmtCreditSat.run(paymentHash, newBalance, newBalance)
+      }
       return newBalance
     }
-    stmtAdjustCredits.run(delta, paymentHash)
-    const updated = stmtBalance.get(paymentHash) as { balance: number }
+    if (currency === 'usd') {
+      stmtAdjustCreditsUsd.run(delta, paymentHash)
+    } else {
+      stmtAdjustCreditsSat.run(delta, delta, paymentHash)
+    }
+    const updated = stmtBal.get(paymentHash) as { balance: number }
     return updated.balance
   })
 
-  const txnDebit = db.transaction((paymentHash: string, amount: number): DebitResult => {
-    const row = stmtBalance.get(paymentHash) as { balance: number } | undefined
+  const txnDebit = db.transaction((paymentHash: string, amount: number, currency: Currency = 'sat'): DebitResult => {
+    const stmtBal = balanceFor(currency)
+    const row = stmtBal.get(paymentHash) as { balance: number } | undefined
     const current = row?.balance ?? 0
     if (current < amount) {
       return { success: false, remaining: current }
     }
-    const result = stmtDebit.run(amount, paymentHash, amount)
+    const stmtDeb = debitFor(currency)
+    const result = currency === 'sat'
+      ? stmtDeb.run(amount, amount, paymentHash, amount)
+      : stmtDeb.run(amount, paymentHash, amount)
     if (result.changes === 0) {
       return { success: false, remaining: current }
     }
@@ -255,20 +320,24 @@ export function sqliteStorage(config?: SqliteStorageConfig): StorageBackend {
   })
 
   return {
-    credit(paymentHash: string, amount: number): void {
-      stmtCredit.run(paymentHash, amount)
+    credit(paymentHash: string, amount: number, currency: Currency = 'sat'): void {
+      if (currency === 'usd') {
+        stmtCreditUsd.run(paymentHash, amount)
+      } else {
+        stmtCreditSat.run(paymentHash, amount, amount)
+      }
     },
 
-    debit(paymentHash: string, amount: number): DebitResult {
-      return txnDebit(paymentHash, amount)
+    debit(paymentHash: string, amount: number, currency: Currency = 'sat'): DebitResult {
+      return txnDebit(paymentHash, amount, currency)
     },
 
-    adjustCredits(paymentHash: string, delta: number): number {
-      return txnAdjustCredits(paymentHash, delta)
+    adjustCredits(paymentHash: string, delta: number, currency: Currency = 'sat'): number {
+      return txnAdjustCredits(paymentHash, delta, currency)
     },
 
-    balance(paymentHash: string): number {
-      const row = stmtBalance.get(paymentHash) as { balance: number } | undefined
+    balance(paymentHash: string, currency: Currency = 'sat'): number {
+      const row = balanceFor(currency).get(paymentHash) as { balance: number } | undefined
       return row?.balance ?? 0
     },
 
@@ -281,8 +350,8 @@ export function sqliteStorage(config?: SqliteStorageConfig): StorageBackend {
       return !!stmtIsSettled.get(paymentHash)
     },
 
-    settleWithCredit(paymentHash: string, amount: number, settlementSecret?: string): boolean {
-      return txnSettleWithCredit(paymentHash, amount, settlementSecret)
+    settleWithCredit(paymentHash: string, amount: number, settlementSecret?: string, currency: Currency = 'sat'): boolean {
+      return txnSettleWithCredit(paymentHash, amount, settlementSecret, currency)
     },
 
     getSettlementSecret(paymentHash: string): string | undefined {
