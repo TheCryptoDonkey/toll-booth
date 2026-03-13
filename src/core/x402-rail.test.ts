@@ -188,6 +188,51 @@ describe('X402Rail', () => {
       const result = await rail.verify(makeRequest({ 'x-payment': 'not-json' }))
       expect(result.authenticated).toBe(false)
     })
+
+    it('rejects x-payment missing required fields without calling facilitator', async () => {
+      const facilitator = mockFacilitator()
+      const rail = createX402Rail({
+        receiverAddress: '0xreceiver',
+        network: 'base',
+        facilitator,
+      })
+
+      // Missing signature
+      const incomplete = JSON.stringify({ sender: '0xs', amount: 500, network: 'base', nonce: 'n1' })
+      const result = await rail.verify(makeRequest({ 'x-payment': incomplete }))
+      expect(result.authenticated).toBe(false)
+      expect(facilitator.verify).not.toHaveBeenCalled()
+    })
+
+    it('rejects x-payment with non-positive amount without calling facilitator', async () => {
+      const facilitator = mockFacilitator()
+      const rail = createX402Rail({
+        receiverAddress: '0xreceiver',
+        network: 'base',
+        facilitator,
+      })
+
+      const negativeAmount = JSON.stringify({
+        signature: 'sig', sender: '0xs', amount: -100, network: 'base', nonce: 'n1',
+      })
+      const result = await rail.verify(makeRequest({ 'x-payment': negativeAmount }))
+      expect(result.authenticated).toBe(false)
+      expect(facilitator.verify).not.toHaveBeenCalled()
+    })
+
+    it('rejects x-payment with non-finite amount', async () => {
+      const facilitator = mockFacilitator()
+      const rail = createX402Rail({
+        receiverAddress: '0xreceiver',
+        network: 'base',
+        facilitator,
+      })
+
+      // amount as string instead of number should be rejected
+      const result = await rail.verify(makeRequest({ 'x-payment': '{"signature":"sig","sender":"0xs","amount":"NaN","network":"base","nonce":"n1"}' }))
+      expect(result.authenticated).toBe(false)
+      expect(facilitator.verify).not.toHaveBeenCalled()
+    })
   })
 
   describe('properties', () => {

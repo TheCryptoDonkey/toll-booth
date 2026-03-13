@@ -14,6 +14,9 @@ const RESERVED_CAVEAT_KEYS = new Set(['payment_hash', 'credit_balance', 'currenc
  * @param creditBalanceSats - The credit balance in satoshis.
  * @returns Base64-encoded binary macaroon.
  */
+/** Maximum number of custom caveats allowed per macaroon. */
+const MAX_CUSTOM_CAVEATS = 16
+
 export function mintMacaroon(rootKey: string, paymentHash: string, creditBalanceSats: number, caveats?: string[], currency?: string): string {
   const keyBytes = hexToBytes(rootKey)
   const m = newMacaroon({
@@ -26,6 +29,9 @@ export function mintMacaroon(rootKey: string, paymentHash: string, creditBalance
   m.addFirstPartyCaveat(`credit_balance = ${creditBalanceSats}`)
   m.addFirstPartyCaveat(`currency = ${currency ?? 'sat'}`)
   if (caveats) {
+    if (caveats.length > MAX_CUSTOM_CAVEATS) {
+      throw new Error(`Too many caveats: maximum ${MAX_CUSTOM_CAVEATS} custom caveats allowed`)
+    }
     for (const caveat of caveats) {
       if (!caveat.includes(' = ')) {
         throw new Error(`Invalid caveat format (must contain " = "): ${caveat}`)

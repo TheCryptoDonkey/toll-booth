@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest'
 import {
   appendVary,
   applyNoStoreHeaders,
+  applySecurityHeaders,
+  isPlausibleIp,
+  parseForwardedIp,
   stripProxyRequestHeaders,
   stripProxyResponseHeaders,
 } from './proxy-headers.js'
@@ -55,5 +58,68 @@ describe('proxy header helpers', () => {
     expect(headers.get('pragma')).toBe('no-cache')
     expect(headers.get('x-content-type-options')).toBe('nosniff')
     expect(headers.get('vary')).toBe('Accept-Encoding, Accept')
+  })
+})
+
+describe('applySecurityHeaders', () => {
+  it('sets X-Frame-Options, Referrer-Policy, and Permissions-Policy', () => {
+    const headers = applySecurityHeaders(new Headers())
+    expect(headers.get('x-frame-options')).toBe('DENY')
+    expect(headers.get('referrer-policy')).toBe('no-referrer')
+    expect(headers.get('permissions-policy')).toBe('camera=(), microphone=(), geolocation=()')
+    // Also includes nosniff from applyNoStoreHeaders
+    expect(headers.get('x-content-type-options')).toBe('nosniff')
+    expect(headers.get('cache-control')).toBe('no-store')
+  })
+})
+
+describe('isPlausibleIp', () => {
+  it('accepts valid IPv4 addresses', () => {
+    expect(isPlausibleIp('192.168.1.1')).toBe(true)
+    expect(isPlausibleIp('10.0.0.1')).toBe(true)
+    expect(isPlausibleIp('127.0.0.1')).toBe(true)
+    expect(isPlausibleIp('255.255.255.255')).toBe(true)
+  })
+
+  it('accepts valid IPv6 addresses', () => {
+    expect(isPlausibleIp('::1')).toBe(true)
+    expect(isPlausibleIp('2001:db8::1')).toBe(true)
+    expect(isPlausibleIp('fe80::1')).toBe(true)
+  })
+
+  it('rejects non-IP strings', () => {
+    expect(isPlausibleIp('')).toBe(false)
+    expect(isPlausibleIp('not-an-ip')).toBe(false)
+    expect(isPlausibleIp('DROP TABLE')).toBe(false)
+    expect(isPlausibleIp('localhost')).toBe(false)
+    expect(isPlausibleIp('<script>alert(1)</script>')).toBe(false)
+  })
+
+  it('rejects strings exceeding 45 characters', () => {
+    expect(isPlausibleIp('a'.repeat(46))).toBe(false)
+  })
+})
+
+describe('parseForwardedIp', () => {
+  it('extracts first valid IP from comma-separated list', () => {
+    expect(parseForwardedIp('192.168.1.1, 10.0.0.1')).toBe('192.168.1.1')
+    expect(parseForwardedIp('  203.0.113.50 , 70.41.3.18')).toBe('203.0.113.50')
+  })
+
+  it('returns undefined for non-IP values', () => {
+    expect(parseForwardedIp('invalid-text')).toBeUndefined()
+    expect(parseForwardedIp('; DROP TABLE --')).toBeUndefined()
+    expect(parseForwardedIp('localhost')).toBeUndefined()
+  })
+
+  it('returns undefined for null/undefined/empty', () => {
+    expect(parseForwardedIp(null)).toBeUndefined()
+    expect(parseForwardedIp(undefined)).toBeUndefined()
+    expect(parseForwardedIp('')).toBeUndefined()
+  })
+
+  it('handles single valid IP', () => {
+    expect(parseForwardedIp('10.0.0.1')).toBe('10.0.0.1')
+    expect(parseForwardedIp('::1')).toBe('::1')
   })
 })

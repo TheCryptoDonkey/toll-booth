@@ -54,6 +54,18 @@ export function createX402Rail(config: X402RailConfig): PaymentRail {
         return { authenticated: false, paymentId: '', mode: 'per-request', currency: 'usd' }
       }
 
+      // Validate required fields before passing to facilitator
+      if (
+        typeof payload !== 'object' || payload === null ||
+        typeof payload.signature !== 'string' || !payload.signature ||
+        typeof payload.sender !== 'string' || !payload.sender ||
+        typeof payload.amount !== 'number' || !Number.isFinite(payload.amount) || payload.amount <= 0 ||
+        typeof payload.network !== 'string' || !payload.network ||
+        typeof payload.nonce !== 'string' || !payload.nonce
+      ) {
+        return { authenticated: false, paymentId: '', mode: 'per-request', currency: 'usd' }
+      }
+
       try {
         const result = await facilitator.verify(payload)
         if (!result.valid) {

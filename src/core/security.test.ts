@@ -168,6 +168,18 @@ describe('invoice pruning safety', () => {
   })
 })
 
+describe('macaroon caveat limits', () => {
+  it('allows up to 16 custom caveats', () => {
+    const caveats = Array.from({ length: 16 }, (_, i) => `key${i} = val${i}`)
+    expect(() => mintMacaroon(ROOT_KEY, randomBytes(32).toString('hex'), 1000, caveats)).not.toThrow()
+  })
+
+  it('rejects more than 16 custom caveats', () => {
+    const caveats = Array.from({ length: 17 }, (_, i) => `key${i} = val${i}`)
+    expect(() => mintMacaroon(ROOT_KEY, randomBytes(32).toString('hex'), 1000, caveats)).toThrow(/Too many caveats/)
+  })
+})
+
 describe('X-Toll-Cost strict validation', () => {
   it('rejects scientific notation in toll cost', async () => {
     // This tests that '1.5e6' is not parsed as 1 (parseInt truncation bug)

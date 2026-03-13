@@ -87,6 +87,14 @@ export class Booth {
     }
     this.rootKey = rootKeyInput.toLowerCase()
 
+    // Warn on trivially weak keys (all same character)
+    if (/^(.)\1{63}$/.test(this.rootKey)) {
+      console.warn(
+        '[toll-booth] WARNING: rootKey has zero entropy (all identical characters). ' +
+        'Use a cryptographically random key for production.',
+      )
+    }
+
     if (config.storage && config.dbPath) {
       throw new Error('Provide either storage or dbPath, not both')
     }

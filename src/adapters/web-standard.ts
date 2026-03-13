@@ -13,6 +13,8 @@ import { PAYMENT_HASH_RE } from '../core/types.js'
 import {
   appendVary,
   applyNoStoreHeaders,
+  applySecurityHeaders,
+  parseForwardedIp,
   stripProxyRequestHeaders,
   stripProxyResponseHeaders,
 } from './proxy-headers.js'
@@ -153,7 +155,7 @@ export function createWebStandardMiddleware(
     const ip = config.getClientIp
       ? config.getClientIp(req)
       : config.trustProxy
-        ? req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? req.headers.get('x-real-ip') ?? 'unknown'
+        ? parseForwardedIp(req.headers.get('x-forwarded-for')) ?? parseForwardedIp(req.headers.get('x-real-ip')) ?? 'unknown'
         : 'unknown'
     const headers = Object.fromEntries(req.headers.entries())
 
@@ -254,7 +256,7 @@ export function createWebStandardInvoiceStatusHandler(
     try {
       if (accept.includes('text/html')) {
         const { html, status } = await renderInvoiceStatusHtml(deps, paymentHash, statusToken)
-        const headers = appendVary(applyNoStoreHeaders(new Headers()), 'Accept')
+        const headers = appendVary(applySecurityHeaders(new Headers()), 'Accept')
         headers.set('Content-Type', 'text/html; charset=utf-8')
         return new Response(html, {
           status,
@@ -317,7 +319,7 @@ export function createWebStandardCreateInvoiceHandler(
     const ip = config.getClientIp
       ? config.getClientIp(req)
       : config.trustProxy
-        ? req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? req.headers.get('x-real-ip') ?? 'unknown'
+        ? parseForwardedIp(req.headers.get('x-forwarded-for')) ?? parseForwardedIp(req.headers.get('x-real-ip')) ?? 'unknown'
         : 'unknown'
 
     const result = await handleCreateInvoice(deps, { ...parsed.value, clientIp: ip })

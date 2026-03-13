@@ -14,7 +14,7 @@ import { handleNwcPay } from '../core/nwc-pay.js'
 import type { NwcPayDeps } from '../core/nwc-pay.js'
 import { handleCashuRedeem } from '../core/cashu-redeem.js'
 import type { CashuRedeemDeps } from '../core/cashu-redeem.js'
-import { applyNoStoreHeaders, appendVary } from './proxy-headers.js'
+import { applySecurityHeaders, appendVary, parseForwardedIp } from './proxy-headers.js'
 
 const MAX_BODY_BYTES = 65_536
 
@@ -104,7 +104,7 @@ export function createHonoTollBooth(config: HonoTollBoothConfig): HonoTollBooth 
   const authMiddleware: MiddlewareHandler<TollBoothEnv> = async (c, next) => {
     const req = c.req.raw
     const ip = config.getClientIp?.(c)
-      ?? c.req.header('x-forwarded-for')?.split(',')[0]?.trim()
+      ?? parseForwardedIp(c.req.header('x-forwarded-for'))
       ?? '0.0.0.0'
 
     const tollReq: TollBoothRequest = {
@@ -169,7 +169,7 @@ export function createHonoTollBooth(config: HonoTollBoothConfig): HonoTollBooth 
     app.post('/create-invoice', async (c) => {
       const ip = paymentConfig.getClientIp?.(c)
         ?? config.getClientIp?.(c)
-        ?? c.req.header('x-forwarded-for')?.split(',')[0]?.trim()
+        ?? parseForwardedIp(c.req.header('x-forwarded-for'))
         ?? '0.0.0.0'
 
       const body = await safeParseJson<CreateInvoiceRequest>(c)
@@ -210,7 +210,7 @@ export function createHonoTollBooth(config: HonoTollBoothConfig): HonoTollBooth 
       try {
         if (accept.includes('text/html')) {
           const { html, status } = await renderInvoiceStatusHtml(invoiceStatusDeps, paymentHash, statusToken)
-          const headers = appendVary(applyNoStoreHeaders(new Headers()), 'Accept')
+          const headers = appendVary(applySecurityHeaders(new Headers()), 'Accept')
           headers.set('Content-Type', 'text/html; charset=utf-8')
           return new Response(html, { status, headers })
         }
