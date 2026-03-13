@@ -6093,5 +6093,255 @@
     "setup": "I won a Handshake auction for the TLD '.bitcoin' in 2021.",
     "punchline": "I've spent five years waiting for someone to want a domain on it. In the meantime, the name renewal fees have cost me more than the auction. This is what early adoption feels like.",
     "topic": "handshake"
+  },
+  {
+    "setup": "My mate asked me what Bitcoin's difficulty adjustment is.",
+    "punchline": "I said it's like if Sudoku got harder every time someone in China bought a new calculator. He said 'that doesn't make sense.' I said 'welcome aboard.'",
+    "topic": "bitcoin"
+  },
+  {
+    "setup": "I stored my seed phrase in a fireproof safe, a bank vault, and engraved on titanium plates buried in two separate locations.",
+    "punchline": "My wife stores her banking password in a note on her phone called 'passwords' and has never once been hacked. I'm starting to think the universe is just mocking me.",
+    "topic": "bitcoin"
+  },
+  {
+    "setup": "The five stages of a Bitcoin halving: denial that it's priced in, anger that it's priced in, bargaining that maybe it's partially priced in, depression as the price drops 20% the week after...",
+    "punchline": "...and acceptance, four months later, when you're up 300% and telling everyone you always knew it wasn't priced in.",
+    "topic": "bitcoin"
+  },
+  {
+    "setup": "I finally got my dad to buy Bitcoin. He rang me at 6am the next morning absolutely furious.",
+    "punchline": "He'd been up all night because he bought at £42,000 and it dropped to £41,800 and he wanted to know which government department to complain to.",
+    "topic": "bitcoin"
+  },
+  {
+    "setup": "My therapist asked me to describe my relationship with Bitcoin in one sentence.",
+    "punchline": "I said 'I check my phone 200 times a day to watch a number go up or down by amounts that wouldn't even cover lunch, and I have never once taken profit because that would be a taxable event and also a moral failure.' She increased my sessions to twice a week.",
+    "topic": "bitcoin"
+  },
+  {
+    "setup": "A Bitcoin maximalist walks into a bar and orders a beer. The bartender says 'that'll be £5.' He says 'do you accept Lightning?'",
+    "punchline": "The bartender says no. The maximalist says 'have fun staying poor,' then walks out because he doesn't actually carry cash anymore and his card is maxed out from buying the dip.",
+    "topic": "bitcoin"
+  },
+  {
+    "setup": "People say Bitcoiners are cultish but that's ridiculous. We simply believe one asset will replace all global money, preach it to strangers, have a sacred text by an anonymous founder no one's ever met, celebrate a halving ritual every four years...",
+    "punchline": "...use the phrase 'stay humble and stack sats' as a greeting, and put laser eyes on our profile pictures to signal the faithful. Completely normal behaviour.",
+    "topic": "bitcoin"
+  },
+  {
+    "setup": "I tried to orange-pill my nan at Christmas dinner. Forty-five minutes in, she looked me dead in the eye and said:",
+    "punchline": "'So let me get this straight, love. Computers do maths puzzles to make magic internet money that you keep on a USB stick you're terrified of losing, and you think the Bank of England is the scam?' And honestly I've never recovered.",
+    "topic": "bitcoin"
+  },
+  {
+    "setup": "The Bitcoin mempool is like an airport during a bank holiday.",
+    "punchline": "Everyone's queuing, nobody knows why it costs this much, someone's trying to get through with 1 sat/vbyte like they've shown up at Heathrow with a handwritten boarding pass, and the whales are in the priority lane paying £400 to move first. Meanwhile you're sat there watching your transaction for 11 hours thinking 'I could have just used my debit card.'",
+    "topic": "bitcoin"
+  },
+  {
+    "setup": "My cold storage setup: Ledger in a Faraday bag, in a fireproof safe, in a room with a deadbolt, seed phrase split into three Shamir shares stored across two countries.",
+    "punchline": "Total amount secured: £280 worth of Bitcoin I bought in 2021 that is now worth £140.",
+    "topic": "bitcoin"
+  },
+  {
+    "setup": "Someone told me 'we're still early' in 2013. Then again in 2017. And 2021. And last Tuesday.",
+    "punchline": "At this point I'm fairly sure my grandchildren will be on their deathbeds in 2090 whispering 'we're still early' to a nurse who does not care.",
+    "topic": "bitcoin"
+  },
+  {
+    "setup": "The worst part about understanding Bitcoin is going to dinner parties.",
+    "punchline": "Someone mentions crypto and everyone looks at you, and you have two options: say 'Bitcoin isn't crypto' and ruin the evening, or stay silent and physically vibrate for the next three hours while someone explains how their Solana NFT dog is going to revolutionise gaming.",
+    "topic": "bitcoin"
+  },
+  {
+    "setup": "Not your keys, not your coins. Your keys, your crippling responsibility.",
+    "punchline": "I now have genuine anxiety dreams about house fires, boating accidents, and the possibility that 'orange' was actually 'arrange' on word 7 of my seed phrase. Banks may be the enemy, but at least their customer service line doesn't tell you to 'check the docs.'",
+    "topic": "bitcoin"
+  },
+  {
+    "setup": "I told someone at work that Bitcoin fixes this. They asked what specifically it fixes.",
+    "punchline": "And I panicked and said 'inflation' even though I'd just spent 40,000 sats on a mass-produced sticker that says 'Bitcoin fixes this' which, adjusting for the exchange rate, cost me roughly £27. So apparently not impulse purchases.",
+    "topic": "bitcoin"
+  },
+  {
+    "setup": "The 'zoom out' crowd are absolutely unhinged. Bitcoin drops 45% and they post a 15-year log chart where the crash is literally one pixel.",
+    "punchline": "Mate, if I zoom out far enough on a photo of the Titanic it looks like a lovely calm ocean. Doesn't mean the people on board were having a great time.",
+    "topic": "bitcoin"
+  },
+  {
+    "setup": "I rebalanced my Lightning channels for six hours last night. My wife asked if I was having an affair.",
+    "punchline": "I said 'I wish - at least that would have better inbound liquidity.'",
+    "topic": "lightning"
+  },
+  {
+    "setup": "My therapist asked me to describe a healthy relationship. I said 'both sides have balanced capacity, fees are transparent, and neither party force closes without warning.'",
+    "punchline": "She said 'we should increase our sessions.' I said 'only if you open a channel first.'",
+    "topic": "lightning"
+  },
+  {
+    "setup": "A Lightning node operator dies and goes to heaven. St Peter says 'You've lived a good life. Any last request?'",
+    "punchline": "He says 'Can you check if my payment to that Greek restaurant in 2024 ever resolved? It's been pending for two years and I never got my souvlaki.'",
+    "topic": "lightning"
+  },
+  {
+    "setup": "Running a Lightning node is like having a Tamagotchi, except instead of dying from neglect, it force closes your largest channel at 3am on Christmas morning",
+    "punchline": "and then your peer's watchtower publishes the justice transaction before you've even found your glasses. Happy Christmas, here's your penalty.",
+    "topic": "lightning"
+  },
+  {
+    "setup": "I finally got a payment to route on the first try yesterday. No failures. No retries. Just... success.",
+    "punchline": "I immediately closed the terminal because I knew the simulation was glitching and I didn't want them to patch it.",
+    "topic": "lightning"
+  },
+  {
+    "setup": "My node earned 47 satoshis in routing fees last month. That's roughly 3p.",
+    "punchline": "My electricity bill for running the node was £22. But you don't understand - I'm providing LIQUIDITY to the NETWORK. I am CRITICAL INFRASTRUCTURE. My wife has started leaving estate agent brochures on the kitchen table.",
+    "topic": "lightning"
+  },
+  {
+    "setup": "Submarine swaps sound like an exciting military operation. In reality",
+    "punchline": "it's a man in his pants at 2am moving sats from one place to slightly different place, paying fees both ways, so his spreadsheet looks tidier. The submarine is his marriage, and it is sinking.",
+    "topic": "lightning"
+  },
+  {
+    "setup": "I joined a Ring of Fire to improve my connectivity. Eight strangers, all opening channels to each other in a circle of trust and cooperation.",
+    "punchline": "Within a week, three had force closed, one disappeared entirely, and the remaining four started a group chat called 'Ring of Trauma' where we mostly just share screenshots of stuck HTLCs and cry.",
+    "topic": "lightning"
+  },
+  {
+    "setup": "Force closing a channel is the Lightning Network equivalent of flipping the table during a board game.",
+    "punchline": "Except the table takes two weeks to hit the floor, everyone can watch it falling on the blockchain, and the cleanup costs you 15,000 sats in on-chain fees. But your HONOUR is intact.",
+    "topic": "lightning"
+  },
+  {
+    "setup": "A pleb node runner, a whale node runner, and an LND developer walk into a bar. The pleb says 'I'll have a beer.' The whale says 'I'll buy the bar.' The LND developer says",
+    "punchline": "'I'll have whatever you're having, but it'll take 47 database migrations, a config flag marked --reckless, and if the bartender sneezes during pour, the whole pub force closes.'",
+    "topic": "lightning"
+  },
+  {
+    "setup": "My Amboss node score went up to 7.2 million yesterday. I texted my dad about it.",
+    "punchline": "He said 'Is that good?' and honestly that question sent me into a two-hour existential spiral because I realised I have absolutely no idea. Nobody does. We're all just making the number go up and hoping it means something. It's like CrossFit for cryptographers.",
+    "topic": "lightning"
+  },
+  {
+    "setup": "You want to know real pain? Real, genuine, soul-crushing pain?",
+    "punchline": "Opening a perfectly balanced 10 million sat channel with ideal fees, beautiful connectivity, a peer with 99.9% uptime - and then watching them drain it completely to one side in a single payment within forty minutes. That channel is now a decorative ornament. A digital paperweight. A monument to hope.",
+    "topic": "lightning"
+  },
+  {
+    "setup": "I explained Lightning Network routing to my grandmother. She listened carefully and said",
+    "punchline": "'So you're telling me you lot built a system where you send money through a chain of strangers, any of whom could be offline, and if one of them has the wrong amount in the wrong direction, the whole thing fails and starts over? We had a word for that in my day - it was called the POST OFFICE.'",
+    "topic": "lightning"
+  },
+  {
+    "setup": "The five stages of a Lightning force close: Denial - 'my peer will come back online.' Anger - 'that absolute TRAITOR.' Bargaining - 'maybe if I restart my node seventeen times.'",
+    "punchline": "Depression - watching the timelock tick down for 144 blocks while your sats sit in on-chain purgatory. Acceptance - never comes. I am on force close number twelve and I am still on stage two for ALL of them.",
+    "topic": "lightning"
+  },
+  {
+    "setup": "Begging for inbound liquidity is the most humiliating thing a grown adult can do. You're essentially posting in Telegram groups saying 'please, sir, would you consider pointing some of your made-up internet money in my direction so that other people's made-up internet money can flow through my laptop.'",
+    "punchline": "And when someone finally opens a channel to you, the GRATITUDE you feel is genuinely pathetic. I sent a man in Brazil a thank-you voice note. We're friends now. My wife is jealous of a node operator called xX_SatoshiMaxi_Xx and honestly? She should be. He gave me 5 million sats of inbound. What has she ever done.",
+    "topic": "lightning"
+  },
+  {
+    "setup": "My mate said he's mass-adopting Nostr by onboarding his whole family.",
+    "punchline": "His mum's first post was her nsec. His dad zapped it 500 sats thinking it was a referral code. His nan reported them both to a relay that doesn't have a report button.",
+    "topic": "nostr"
+  },
+  {
+    "setup": "I asked a Nostr developer how many NIPs it takes to change a lightbulb.",
+    "punchline": "Fourteen. NIP-97 defines the bulb schema, NIP-98 handles the rotation event, NIP-99 introduces an optional darkness caveat, and the remaining eleven are competing proposals from people who think the room should stay dark because \"that's more aligned with the protocol's original vision.\"",
+    "topic": "nostr"
+  },
+  {
+    "setup": "Nostr is truly decentralised. No single entity controls the network.",
+    "punchline": "It's controlled by three relays, two clients that kind of work, and one mass DM from Fiatjaf that just says \"this is fine.\"",
+    "topic": "nostr"
+  },
+  {
+    "setup": "My therapist asked me to describe my most traumatic experience.",
+    "punchline": "I told her about the mass key rotation event of 2025, where I lost my npub, recovered the wrong nsec, accidentally signed into someone else's identity, posted \"GM\" from their account, and got zapped 12,000 sats for a note I never wrote. She referred me to a psychiatrist. He was on Nostr. He'd already seen the thread.",
+    "topic": "nostr"
+  },
+  {
+    "setup": "I explained Nostr to my non-technical friend. She asked, \"So what do people actually post about?\"",
+    "punchline": "I opened my feed. The first post was about Nostr. The second was about how great Nostr is. The third was someone complaining that people only post about Nostr. The fourth was a screenshot of that complaint, captioned \"This is why we need Nostr.\"",
+    "topic": "nostr"
+  },
+  {
+    "setup": "A Nostr user, a CrossFit enthusiast, and a vegan walk into a bar.",
+    "punchline": "Just kidding, it's the same person and they already told everyone in the bar about all three before sitting down. Then they zapped the bartender and asked if the pub accepts Lightning.",
+    "topic": "nostr"
+  },
+  {
+    "setup": "I posted \"I'm thinking of leaving Nostr\" to see if anyone would care.",
+    "punchline": "I got 47 zaps, 200 reposts, a mass follow event, three NIP proposals to standardise exit announcements, and a mass DM group called \"intervention\" that couldn't agree on which client to use for the actual intervention.",
+    "topic": "nostr"
+  },
+  {
+    "setup": "I asked my wife to try Nostr. She said she'd think about it.",
+    "punchline": "Three months later I'd set up her keys, backed up her nsec in four locations, explained the difference between relays and clients, migrated her follow list twice after a relay went down, built her a custom feed, and she posted once. It said \"Is this thing on?\" Nobody saw it. She went back to Instagram. I've never recovered.",
+    "topic": "nostr"
+  },
+  {
+    "setup": "Client diversity on Nostr means freedom of choice.",
+    "punchline": "Freedom to choose which client will show you a completely different version of the same thread, render your profile picture sideways, and display your carefully crafted long-form note as a single unformatted paragraph. On Amethyst it looks fine. On Damus it's a haiku. On Primal it's attributed to someone else entirely.",
+    "topic": "nostr"
+  },
+  {
+    "setup": "Someone in my Nostr feed suggested we should stop saying \"GM\" every morning because it's meaningless.",
+    "punchline": "They were mass-reported, unfollowed by 300 accounts, and their relay was blacklisted within the hour. A NIP was proposed to make \"GM\" a protocol-level event kind. Fiatjaf marked it \"won't fix\" but someone implemented it anyway. It's now supported on two clients and broken on five.",
+    "topic": "nostr"
+  },
+  {
+    "setup": "My mate says he's fully de-Googled his life. No Gmail, no Google Maps, no Chrome, no Android.",
+    "punchline": "I asked him how he found the restaurant we were meeting at. He said \"I watched a YouTube tutorial on OpenStreetMap.\" On his Chromebook. At Starbucks. Using Google Wi-Fi. He doesn't see the contradiction. He never does.",
+    "topic": "freedom tech"
+  },
+  {
+    "setup": "I run my own email server.",
+    "punchline": "I've spent 600 hours configuring DKIM, SPF, and DMARC. My emails still go to spam. Microsoft thinks I'm a botnet. Google thinks I'm a Nigerian prince. My mum asked why I never reply to her emails. I do, Sandra. I reply every time. They're just rotting in a Proofpoint quarantine in Ohio. I have achieved digital sovereignty and also zero functioning communication with any human being.",
+    "topic": "freedom tech"
+  },
+  {
+    "setup": "My flat has a Raspberry Pi running Pi-hole, a NAS running TrueNAS, a node running Bitcoin Core, a server running Nextcloud, and a box running Home Assistant.",
+    "punchline": "My electricity bill is higher than my rent. My girlfriend asked why the bedroom sounds like a Heathrow runway. I told her it's the sound of freedom. She left. She was right to leave. The UPS battery backup I bought to cope with my grief draws 200 watts at idle.",
+    "topic": "freedom tech"
+  },
+  {
+    "setup": "A cypherpunk threat-models everything. A trip to Tesco is a surveillance event.",
+    "punchline": "Clubcard? Tracking device. Self-checkout camera? Facial recognition. Contactless payment? Financial fingerprint. So I pay cash, wear a hat, and drive a route with no ANPR cameras. Takes 40 minutes to buy milk. My wife sends me a shopping list over Signal with disappearing messages. I read it, it vanishes, and I come home with the wrong milk because I couldn't check it again.",
+    "topic": "freedom tech"
+  },
+  {
+    "setup": "I switched to GrapheneOS six months ago.",
+    "punchline": "My banking app doesn't work. My train app doesn't work. My parking app doesn't work. My NHS app doesn't work. But I can tell you with absolute certainty that no corporation is harvesting my data, because I can no longer interact with any corporation. I am off the grid. Not by philosophy. By incompatibility. Last week I stood in a car park for twenty minutes trying to pay with cash and the machine only took an app. I am free. I am also stuck in a car park.",
+    "topic": "freedom tech"
+  },
+  {
+    "setup": "I tried to explain PGP key signing parties to a normal person.",
+    "punchline": "\"So you meet strangers in a pub, verify each other's government-issued ID to establish cryptographic trust, then sign each other's keys and upload them to a public keyserver.\" She said, \"That sounds like a cult.\" I said, \"It's not a cult, we just have a web of trust.\" She said, \"That's exactly what a cult would call it.\" I couldn't argue. The last one I went to, a man checked my passport under UV light.",
+    "topic": "freedom tech"
+  },
+  {
+    "setup": "Five Eyes intelligence agencies intercepted my Tor traffic last Tuesday.",
+    "punchline": "They spent four hours and significant taxpayer resources decrypting three layers of onion routing to discover I was googling \"sourdough starter smells like vomit is that normal.\" Somewhere in GCHQ, an analyst wrote a report classifying my bread as a low-priority biological concern. I've never felt more seen.",
+    "topic": "freedom tech"
+  },
+  {
+    "setup": "I joined a Signal group for local privacy advocates.",
+    "punchline": "Everyone's display name is a 16-character hex string. Nobody knows who anyone is. Someone asked if we should meet up in person and three people left the group immediately. One person's safety number changed and we spent two hours debating whether they'd been compromised or just got a new phone. They got a new phone. We verified in person. At a pub. Nobody used their real name. The barman asked if we were a support group. Honestly, yes.",
+    "topic": "freedom tech"
+  },
+  {
+    "setup": "\"If you have nothing to hide, you have nothing to fear.\"",
+    "punchline": "Cool. Give me your email password, your browser history, a live feed of your bedroom camera, your full medical records, every text you've sent your ex at 2am, and your work Slack DMs where you called your boss a \"weapons-grade plank.\" What's that? Some things are private? Welcome to the movement, comrade. Your VPN trial starts now.",
+    "topic": "freedom tech"
+  },
+  {
+    "setup": "A cypherpunk dies and arrives at the pearly gates. St Peter says, \"We've been watching you your whole life.\"",
+    "punchline": "The cypherpunk says, \"Through which vector?\" St Peter says, \"Omniscience.\" The cypherpunk says, \"Is that server-side or client-side? Is it end-to-end encrypted? Who has the keys? Is there an audit log? Can I self-host?\" St Peter sighs, opens the gate, and says, \"Just go in.\" The cypherpunk says, \"I'm not clicking that link without checking the certificate first.\"",
+    "topic": "freedom tech"
   }
 ]
