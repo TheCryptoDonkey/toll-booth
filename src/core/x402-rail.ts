@@ -25,7 +25,7 @@ export function createX402Rail(config: X402RailConfig): PaymentRail {
       return req.headers['x-payment'] !== undefined
     },
 
-    async challenge(route: string, price: PriceInfo): Promise<ChallengeFragment> {
+    async challenge(_route: string, price: PriceInfo): Promise<ChallengeFragment> {
       return {
         headers: { 'X-Payment-Required': 'x402' },
         body: {
