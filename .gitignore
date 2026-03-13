@@ -10,3 +10,4 @@ valhalla-tiles/
 *.db-shm
 *.db-wal
 *.macaroon
+docs/superpowers/
