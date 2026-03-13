@@ -54,6 +54,7 @@ export function createTollBooth(config: TollBoothCoreConfig): TollBoothEngine {
       storage,
       defaultAmount,
       backend: config.backend,
+      serviceName: config.serviceName,
     }),
   ]
   const normalisedPricing = config.normalisedPricing ?? normalisePricingTable(config.pricing ?? {})

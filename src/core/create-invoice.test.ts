@@ -38,6 +38,20 @@ describe('handleCreateInvoice', () => {
     expect(result.data?.amountSats).toBe(1000)
   })
 
+  it('uses serviceName in invoice memo when provided', async () => {
+    const backend = mockBackend()
+    const deps = makeDeps({ backend, serviceName: 'satgate' })
+    await handleCreateInvoice(deps, {})
+    expect(backend.createInvoice).toHaveBeenCalledWith(1000, 'satgate: 1000 sats credit')
+  })
+
+  it('defaults to toll-booth in invoice memo when serviceName is omitted', async () => {
+    const backend = mockBackend()
+    const deps = makeDeps({ backend })
+    await handleCreateInvoice(deps, {})
+    expect(backend.createInvoice).toHaveBeenCalledWith(1000, 'toll-booth: 1000 sats credit')
+  })
+
   it('uses explicit amountSats when provided', async () => {
     const deps = makeDeps()
     const result = await handleCreateInvoice(deps, { amountSats: 500 })

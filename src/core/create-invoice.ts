@@ -16,6 +16,8 @@ export interface CreateInvoiceDeps {
   tiers: CreditTier[]
   defaultAmount: number
   maxPendingPerIp?: number
+  /** Human-readable service name for invoice descriptions. Defaults to 'toll-booth'. */
+  serviceName?: string
 }
 
 /**
@@ -80,9 +82,10 @@ export async function handleCreateInvoice(
     let bolt11: string | undefined
 
     if (deps.backend) {
+      const label = deps.serviceName ?? 'toll-booth'
       const invoice = await deps.backend.createInvoice(
         requestedAmount,
-        `toll-booth: ${creditSats} sats credit`,
+        `${label}: ${creditSats} sats credit`,
       )
       paymentHash = invoice.paymentHash
       bolt11 = invoice.bolt11

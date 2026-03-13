@@ -107,7 +107,7 @@ export class Booth {
     const rails: PaymentRail[] = []
 
     if (config.backend || config.redeemCashu) {
-      rails.push(createL402Rail({ rootKey: this.rootKey, storage: this.storage, defaultAmount, backend: config.backend }))
+      rails.push(createL402Rail({ rootKey: this.rootKey, storage: this.storage, defaultAmount, backend: config.backend, serviceName: config.serviceName }))
     }
 
     if (config.x402) {
@@ -147,6 +147,7 @@ export class Booth {
       tiers: config.creditTiers ?? [],
       defaultAmount,
       maxPendingPerIp: config.invoiceRateLimit?.maxPendingPerIp,
+      serviceName: config.serviceName,
     }
 
     const invoiceStatusDeps: InvoiceStatusDeps = {

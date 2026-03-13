@@ -178,6 +178,13 @@ export interface BoothConfig {
   x402?: X402RailConfig
 
   /**
+   * Human-readable service name used in Lightning invoice descriptions.
+   * Defaults to `'toll-booth'`. Example: `'satgate'` produces invoices
+   * like `"satgate: 1000 sats credit"`.
+   */
+  serviceName?: string
+
+  /**
    * Timeout in milliseconds for upstream proxy requests.
    * Defaults to 30000 (30 seconds).
    */

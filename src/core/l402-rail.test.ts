@@ -175,6 +175,27 @@ describe('L402Rail', () => {
       expect(l402.amount_sats).toBe(1000)
     })
 
+    it('uses serviceName in invoice memo when provided', async () => {
+      const backend = {
+        createInvoice: vi.fn().mockResolvedValue({
+          bolt11: 'lnbc1000...',
+          paymentHash: 'abc123'.padEnd(64, '0'),
+        }),
+        checkInvoice: vi.fn(),
+      }
+
+      const rail = createL402Rail({
+        rootKey: ROOT_KEY,
+        storage: mockStorage(),
+        defaultAmount: 1000,
+        backend,
+        serviceName: 'satgate',
+      })
+
+      await rail.challenge('/api/test', { sats: 100 })
+      expect(backend.createInvoice).toHaveBeenCalledWith(1000, 'satgate: /api/test')
+    })
+
     it('generates synthetic hash without backend (Cashu-only mode)', async () => {
       const rail = createL402Rail({
         rootKey: ROOT_KEY,

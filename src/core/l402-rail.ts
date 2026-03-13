@@ -10,10 +10,13 @@ export interface L402RailConfig {
   storage: StorageBackend
   defaultAmount: number
   backend?: LightningBackend
+  /** Human-readable service name for invoice descriptions. Defaults to 'toll-booth'. */
+  serviceName?: string
 }
 
 export function createL402Rail(config: L402RailConfig): PaymentRail {
   const { rootKey, storage, defaultAmount, backend } = config
+  const label = config.serviceName ?? 'toll-booth'
 
   return {
     type: 'l402',
@@ -34,7 +37,7 @@ export function createL402Rail(config: L402RailConfig): PaymentRail {
       let paymentHash: string
 
       if (backend) {
-        const invoice = await backend.createInvoice(amount, `toll-booth: ${route}`)
+        const invoice = await backend.createInvoice(amount, `${label}: ${route}`)
         bolt11 = invoice.bolt11
         paymentHash = invoice.paymentHash
       } else {

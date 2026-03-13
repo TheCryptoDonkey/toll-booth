@@ -76,6 +76,8 @@ export interface PaymentAppConfig {
   nwcPay?: NwcPayDeps['nwcPay']
   cashuRedeem?: CashuRedeemDeps['redeem']
   getClientIp?: (c: Context) => string
+  /** Human-readable service name for invoice descriptions. Defaults to 'toll-booth'. */
+  serviceName?: string
 }
 
 export interface HonoTollBooth {
@@ -146,6 +148,7 @@ export function createHonoTollBooth(config: HonoTollBoothConfig): HonoTollBooth 
       tiers: paymentConfig.tiers,
       defaultAmount: paymentConfig.defaultAmount,
       maxPendingPerIp: paymentConfig.maxPendingPerIp,
+      serviceName: paymentConfig.serviceName,
     }
 
     const invoiceStatusDeps: InvoiceStatusDeps = {

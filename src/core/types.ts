@@ -39,6 +39,8 @@ export interface TollBoothCoreConfig {
   creditTiers?: CreditTier[]
   rails?: PaymentRail[]
   normalisedPricing?: Record<string, PriceInfo>
+  /** Human-readable service name for invoice descriptions. Defaults to 'toll-booth'. */
+  serviceName?: string
   onPayment?: (event: PaymentEvent) => void
   onRequest?: (event: RequestEvent) => void
   onChallenge?: (event: ChallengeEvent) => void
