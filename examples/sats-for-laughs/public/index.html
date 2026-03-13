@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sats for Laughs - Pay 21 sats, get a joke</title>
+<title>Sats for Laughs - Lightning-powered jokes from 5 sats</title>
 <meta name="description" content="Lightning-powered joke API. Pay sats, get laughs. Powered by toll-booth L402 middleware.">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
 <style>
@@ -423,7 +423,7 @@
   <header class="header">
     <span class="bolt" aria-hidden="true">&#9889;</span>
     <h1>Sats for Laughs</h1>
-    <p class="tagline">Pay 21 sats. Get a joke. Simple as that.</p>
+    <p class="tagline">Pay sats. Get laughs. Pick your quality.</p>
   </header>
 
   <nav class="topics" aria-label="Joke topics">
@@ -434,6 +434,21 @@
     <button class="topic-pill" data-topic="freedom tech">freedom tech</button>
     <button class="topic-pill" data-topic="meshtastic">meshtastic</button>
     <button class="topic-pill" data-topic="handshake">handshake</button>
+  </nav>
+
+  <nav class="tiers" id="tier-selector" aria-label="Joke quality">
+    <button class="tier-btn active" data-tier="default">
+      <div class="tier-label">Cracker</div>
+      <div class="tier-price">5 sats</div>
+    </button>
+    <button class="tier-btn" data-tier="standard">
+      <div class="tier-label">Standard</div>
+      <div class="tier-price">21 sats</div>
+    </button>
+    <button class="tier-btn" data-tier="premium">
+      <div class="tier-label">Premium</div>
+      <div class="tier-price">42 sats</div>
+    </button>
   </nav>
 
   <div id="joke-area">
@@ -462,8 +477,11 @@
   var statusLine = document.getElementById('status-line');
   var topicPills = document.querySelectorAll('.topic-pill');
 
+  var tierButtons = document.querySelectorAll('#tier-selector .tier-btn');
+
   // -- State --
   var activeTopic = null; // null = all
+  var activeTier = 'default'; // default = cracker
   var pollTimer = null;
   var currentBolt11 = null;
   var fetching = false;
@@ -492,6 +510,15 @@
     });
   });
 
+  // -- Tier buttons --
+  tierButtons.forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      tierButtons.forEach(function (b) { b.classList.remove('active'); });
+      btn.classList.add('active');
+      activeTier = btn.dataset.tier;
+    });
+  });
+
   // -- Action button --
   actionBtn.addEventListener('click', function () {
     if (!fetching) {
@@ -510,8 +537,10 @@
     actionBtn.textContent = 'Fetching...';
     jokeArea.classList.add('fading');
 
-    var url = '/api/joke';
-    if (topic) url += '?topic=' + encodeURIComponent(topic);
+    var params = [];
+    if (topic) params.push('topic=' + encodeURIComponent(topic));
+    if (activeTier && activeTier !== 'default') params.push('tier=' + encodeURIComponent(activeTier));
+    var url = '/api/joke' + (params.length ? '?' + params.join('&') : '');
 
     var headers = { 'Accept': 'application/json' };
     var token = getToken();
@@ -566,7 +595,8 @@
 
     var badgeEl = document.createElement('div');
     badgeEl.className = 'joke-topic-badge';
-    badgeEl.textContent = data.topic;
+    var qualityLabel = data.quality === 'premium' ? 'premium' : data.quality === 'cracker' ? 'cracker' : 'standard';
+    badgeEl.textContent = data.topic + ' \u00B7 ' + qualityLabel;
     jokeArea.appendChild(badgeEl);
 
     jokeArea.classList.remove('fading');
@@ -626,9 +656,11 @@
     var tiersDiv = document.createElement('div');
     tiersDiv.className = 'tiers';
     var tiers = [
-      { amountSats: 21, creditSats: 21, label: '1 joke' },
-      { amountSats: 100, creditSats: 105, label: '5 jokes' },
-      { amountSats: 210, creditSats: 252, label: '12 jokes' },
+      { amountSats: 5,   creditSats: 5,   label: '1 cracker' },
+      { amountSats: 21,  creditSats: 21,  label: '1 standard' },
+      { amountSats: 42,  creditSats: 42,  label: '1 premium' },
+      { amountSats: 100, creditSats: 105, label: '5 standard' },
+      { amountSats: 210, creditSats: 252, label: '6 premium' },
     ];
 
     tiers.forEach(function (tier, i) {

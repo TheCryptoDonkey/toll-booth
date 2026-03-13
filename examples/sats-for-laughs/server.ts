@@ -14,14 +14,17 @@ interface Joke {
   setup: string
   punchline: string
   topic: string
+  quality: 'cracker' | 'standard' | 'premium'
 }
 
 const jokes: Joke[] = (JSON.parse(readFileSync(resolve(__dirname, 'jokes.json'), 'utf-8')) as Joke[])
   .filter((j) => j.setup && j.punchline)
+  .map((j) => ({ ...j, quality: j.quality ?? 'standard' }))
 const topics = [...new Set(jokes.map((j) => j.topic))]
 
-function randomJoke(topic?: string): Joke {
-  const pool = topic ? jokes.filter((j) => j.topic === topic) : jokes
+function randomJoke(topic?: string, quality?: string): Joke {
+  let pool = topic ? jokes.filter((j) => j.topic === topic) : jokes
+  if (quality) pool = pool.filter((j) => j.quality === quality)
   if (pool.length === 0) return jokes[Math.floor(Math.random() * jokes.length)]
   return pool[Math.floor(Math.random() * pool.length)]
 }
@@ -50,11 +53,16 @@ const upstream = express()
 
 upstream.get('/api/joke', (req, res) => {
   const topic = typeof req.query.topic === 'string' ? req.query.topic.toLowerCase() : undefined
-  const joke = randomJoke(topic)
+  const tier = req.headers['x-toll-tier'] as string | undefined ?? 'default'
+  const quality = tier === 'premium' ? 'premium'
+                : tier === 'standard' ? 'standard'
+                : 'cracker'
+  const joke = randomJoke(topic, quality)
   res.json({
     setup: joke.setup,
     punchline: joke.punchline,
     topic: joke.topic,
+    quality: joke.quality,
     poweredBy: {
       name: 'toll-booth',
       description: 'L402 Lightning payment middleware',
@@ -85,14 +93,22 @@ const booth = new Booth({
   adapter: 'express',
   backend,
   ...(mockStorage ? { storage: mockStorage } : { dbPath: process.env.TOLL_BOOTH_DB_PATH ?? '/data/toll-booth.db' }),
-  pricing: { '/api/joke': 21 },
+  pricing: {
+    '/api/joke': {
+      default: 5,
+      standard: 21,
+      premium: 42,
+    },
+  },
   upstream: `http://localhost:${UPSTREAM_PORT}`,
   freeTier: { requestsPerDay: 3 },
   defaultInvoiceAmount: 21,
   creditTiers: [
-    { amountSats: 21, creditSats: 21, label: '1 joke' },
-    { amountSats: 100, creditSats: 105, label: '5 jokes' },
-    { amountSats: 210, creditSats: 252, label: '12 jokes' },
+    { amountSats: 5,   creditSats: 5,   label: '1 cracker joke',   tier: 'default' },
+    { amountSats: 21,  creditSats: 21,  label: '1 standard joke',  tier: 'standard' },
+    { amountSats: 100, creditSats: 105, label: '5 standard jokes',  tier: 'standard' },
+    { amountSats: 42,  creditSats: 42,  label: '1 premium joke',   tier: 'premium' },
+    { amountSats: 210, creditSats: 252, label: '6 premium jokes',  tier: 'premium' },
   ],
   rootKey: process.env.ROOT_KEY || randomBytes(32).toString('hex'),
   trustProxy: true,
@@ -113,10 +129,13 @@ app.post('/create-invoice', booth.createInvoiceHandler as express.RequestHandler
 app.use('/', booth.middleware as express.RequestHandler)
 
 app.listen(port, () => {
+  const qualityCounts = { cracker: 0, standard: 0, premium: 0 }
+  jokes.forEach(j => qualityCounts[j.quality]++)
   console.log(`sats-for-laughs listening on :${port}`)
   console.log(`  topics: ${topics.join(', ')}`)
   console.log(`  jokes loaded: ${jokes.length}`)
-  console.log(`  pricing: 21 sats/joke (3 free/day)`)
+  console.log(`  quality: ${qualityCounts.cracker} cracker, ${qualityCounts.standard} standard, ${qualityCounts.premium} premium`)
+  console.log(`  pricing: 5/21/42 sats (cracker/standard/premium), 3 free/day`)
 })
 
 function shutdown() {
