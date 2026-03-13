@@ -283,6 +283,32 @@ describe('sqliteStorage', () => {
       expect(store.balance('hash-a', 'usd')).toBe(800)
       store.close()
     })
+
+    it('same hash can hold both currencies independently', () => {
+      const store = sqliteStorage({ path: ':memory:' })
+      store.credit('hash-a', 1000)           // sat
+      store.credit('hash-a', 200, 'usd')
+      expect(store.balance('hash-a')).toBe(1000)        // sat unchanged
+      expect(store.balance('hash-a', 'usd')).toBe(200)  // usd separate
+      store.close()
+    })
+
+    it('debit fails for uncredited currency even when other currency has funds', () => {
+      const store = sqliteStorage({ path: ':memory:' })
+      store.credit('hash-a', 1000)  // sat
+      const result = store.debit('hash-a', 500, 'usd')
+      expect(result.success).toBe(false)
+      expect(result.remaining).toBe(0)
+      expect(store.balance('hash-a')).toBe(1000)  // sat untouched
+      store.close()
+    })
+
+    it('balance returns 0 for uncredited currency', () => {
+      const store = sqliteStorage({ path: ':memory:' })
+      store.credit('hash-a', 1000)  // sat
+      expect(store.balance('hash-a', 'usd')).toBe(0)
+      store.close()
+    })
   })
 
   it('prunes invoices older than maxAgeMs', () => {

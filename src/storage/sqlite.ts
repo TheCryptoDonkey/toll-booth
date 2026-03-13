@@ -136,7 +136,6 @@ export function sqliteStorage(config?: SqliteStorageConfig): StorageBackend {
     'SELECT balance_usd AS balance FROM credits WHERE payment_hash = ?'
   )
 
-  function creditFor(currency: Currency) { return currency === 'usd' ? stmtCreditUsd : stmtCreditSat }
   function debitFor(currency: Currency) { return currency === 'usd' ? stmtDebitUsd : stmtDebitSat }
   function balanceFor(currency: Currency) { return currency === 'usd' ? stmtBalanceUsd : stmtBalanceSat }
 
