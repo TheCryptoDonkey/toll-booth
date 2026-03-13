@@ -796,6 +796,13 @@
             setToken('L402 ' + macaroon + ':' + suffix);
           }
 
+          // Reset tier to default so the first joke always succeeds
+          // regardless of credit amount purchased
+          activeTier = 'default';
+          tierButtons.forEach(function (b) {
+            b.classList.toggle('active', b.dataset.tier === 'default');
+          });
+
           // Re-fetch the joke
           fetching = false;
           fetchJoke(activeTopic);
