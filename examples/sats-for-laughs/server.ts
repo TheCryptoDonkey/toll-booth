@@ -86,7 +86,7 @@ const booth = new Booth({
   ...(mockStorage ? { storage: mockStorage } : { dbPath: process.env.TOLL_BOOTH_DB_PATH ?? '/data/toll-booth.db' }),
   pricing: { '/api/joke': 21 },
   upstream: `http://localhost:${UPSTREAM_PORT}`,
-  freeTier: { requestsPerDay: 1 },
+  freeTier: { requestsPerDay: 3 },
   defaultInvoiceAmount: 21,
   creditTiers: [
     { amountSats: 21, creditSats: 21, label: '1 joke' },
@@ -115,7 +115,7 @@ app.listen(port, () => {
   console.log(`sats-for-laughs listening on :${port}`)
   console.log(`  topics: ${topics.join(', ')}`)
   console.log(`  jokes loaded: ${jokes.length}`)
-  console.log(`  pricing: 21 sats/joke (1 free/day)`)
+  console.log(`  pricing: 21 sats/joke (3 free/day)`)
 })
 
 function shutdown() {
