@@ -71,8 +71,5 @@ export function createX402Rail(config: X402RailConfig): PaymentRail {
       }
     },
 
-    async settle() {
-      return { settled: true }
-    },
   }
 }

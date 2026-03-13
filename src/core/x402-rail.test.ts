@@ -39,6 +39,29 @@ describe('X402Rail', () => {
     })
   })
 
+  describe('canChallenge', () => {
+    it('returns true when price has usd', () => {
+      const rail = createX402Rail({
+        receiverAddress: '0x', network: 'base', facilitator: mockFacilitator(),
+      })
+      expect(rail.canChallenge!({ usd: 5 })).toBe(true)
+    })
+
+    it('returns false when price has only sats', () => {
+      const rail = createX402Rail({
+        receiverAddress: '0x', network: 'base', facilitator: mockFacilitator(),
+      })
+      expect(rail.canChallenge!({ sats: 100 })).toBe(false)
+    })
+
+    it('returns false for empty price', () => {
+      const rail = createX402Rail({
+        receiverAddress: '0x', network: 'base', facilitator: mockFacilitator(),
+      })
+      expect(rail.canChallenge!({})).toBe(false)
+    })
+  })
+
   describe('challenge', () => {
     it('returns x402 payment requirements', async () => {
       const rail = createX402Rail({
@@ -111,6 +134,23 @@ describe('X402Rail', () => {
       })
       const result = await rail.verify(makeRequest({ 'x-payment': payload }))
 
+      expect(result.authenticated).toBe(false)
+    })
+
+    it('rejects when facilitator throws', async () => {
+      const facilitator: X402Facilitator = {
+        verify: vi.fn().mockRejectedValue(new Error('network timeout')),
+      }
+      const rail = createX402Rail({
+        receiverAddress: '0xreceiver',
+        network: 'base',
+        facilitator,
+      })
+
+      const payload = JSON.stringify({
+        signature: 'sig', sender: '0xs', amount: 500, network: 'base', nonce: 'n1',
+      })
+      const result = await rail.verify(makeRequest({ 'x-payment': payload }))
       expect(result.authenticated).toBe(false)
     })
 
