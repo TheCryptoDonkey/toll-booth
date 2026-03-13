@@ -95,7 +95,8 @@
     "test:integration:ln": "bash scripts/test-integration.sh --ln-only",
     "test:integration:cashu": "bash scripts/test-integration.sh --cashu-only",
     "typecheck": "tsc --noEmit",
-    "prepublishOnly": "npm run build && npm test"
+    "prepublishOnly": "npm run build && npm test",
+    "postinstall": "patch-package"
   },
   "dependencies": {
     "better-sqlite3": "^11.8.0",
@@ -123,6 +124,7 @@
     "@types/ws": "^8.18.1",
     "express": "^5.2.1",
     "hono": "^4.12.7",
+    "patch-package": "^8.0.1",
     "tsx": "^4.21.0",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
