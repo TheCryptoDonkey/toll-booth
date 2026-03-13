@@ -15,7 +15,7 @@ graph TB
     end
 
     subgraph "Product Layer"
-        TT["token-toll<br/><i>AI inference proxy — pay-per-token</i>"]
+        TT["satgate<br/><i>AI inference proxy — pay-per-token</i>"]
         FUTURE["your-toll<br/><i>your domain-specific proxy</i>"]
     end
 
@@ -88,7 +88,7 @@ An AI agent autonomously discovers, pays for, and consumes an API — no human i
 sequenceDiagram
     participant Agent as AI Agent
     participant MCP as l402-mcp
-    participant TT as token-toll
+    participant TT as satgate
     participant TB as toll-booth
     participant LLM as Upstream LLM
 
@@ -160,13 +160,13 @@ graph LR
     CI --> ALBY
 ```
 
-## token-toll: inference-specific layer
+## satgate: inference-specific layer
 
-token-toll adds AI-specific concerns on top of toll-booth's payment gating.
+satgate adds AI-specific concerns on top of toll-booth's payment gating.
 
 ```mermaid
 graph TB
-    subgraph "token-toll"
+    subgraph "satgate"
         CLI["CLI<br/>auto-detect models, startup config"]
         ROUTER["Router<br/>/v1/chat/completions<br/>/v1/completions<br/>/v1/embeddings"]
         PRICING["Model Pricing<br/>per-model rates, defaults, fuzzy matching"]
@@ -201,7 +201,7 @@ graph TB
 | Layer | Project | What it does | What it doesn't do |
 |-------|---------|-------------|-------------------|
 | **Client** | [l402-mcp](https://github.com/TheCryptoDonkey/l402-mcp) | Discovers, pays, consumes L402 APIs | Doesn't gate or price anything |
-| **Product** | [token-toll](https://github.com/TheCryptoDonkey/token-toll) | Token counting, model pricing, capacity, streaming | Doesn't handle payments directly |
+| **Product** | [satgate](https://github.com/TheCryptoDonkey/satgate) | Token counting, model pricing, capacity, streaming | Doesn't handle payments directly |
 | **Middleware** | [toll-booth](https://github.com/TheCryptoDonkey/toll-booth) | Payment gating, credit accounting, free tiers | Doesn't know about tokens or models |
 | **Rails** | Lightning / Cashu / NWC / x402 | Moves money | Doesn't know about HTTP or APIs |
 
