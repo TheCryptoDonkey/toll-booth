@@ -58,6 +58,9 @@ export async function handleCashuRedeem(
           const credited = await withLeaseKeepAlive(deps.storage, paymentHash, () =>
             deps.redeem(pendingClaim.token, paymentHash),
           )
+          if (credited < 0) {
+            return { success: false, error: 'Redeem callback returned negative amount', status: 500 }
+          }
           const settlementSecret = randomBytes(32).toString('hex')
           const newlySettled = deps.storage.settleWithCredit(paymentHash, credited, settlementSecret)
           return {
@@ -78,6 +81,9 @@ export async function handleCashuRedeem(
       const credited = await withLeaseKeepAlive(deps.storage, paymentHash, () =>
         deps.redeem(token, paymentHash),
       )
+      if (credited < 0) {
+        return { success: false, error: 'Redeem callback returned negative amount', status: 500 }
+      }
       const settlementSecret = randomBytes(32).toString('hex')
       const newlySettled = deps.storage.settleWithCredit(paymentHash, credited, settlementSecret)
       return {

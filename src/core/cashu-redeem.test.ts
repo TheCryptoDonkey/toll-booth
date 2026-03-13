@@ -79,6 +79,22 @@ describe('handleCashuRedeem', () => {
     }
   })
 
+  it('returns 500 when redeem callback returns negative amount', async () => {
+    const deps = createDeps({
+      redeem: vi.fn().mockResolvedValue(-100),
+    })
+    const hash = 'a'.repeat(64)
+    deps.storage.storeInvoice(hash, '', 1000, 'mac', 'tok')
+    const result = await handleCashuRedeem(deps, { token: 'cashuA...', paymentHash: hash, statusToken: 'tok' })
+    expect(result.success).toBe(false)
+    if (!result.success && 'error' in result) {
+      expect(result.status).toBe(500)
+      expect(result.error).toContain('negative')
+    }
+    // Claim should not be stuck pending — it should be clearable
+    expect(deps.storage.isSettled(hash)).toBe(false)
+  })
+
   it('returns pending when claim already held by another process', async () => {
     const deps = createDeps()
     const hash = 'a'.repeat(64)
