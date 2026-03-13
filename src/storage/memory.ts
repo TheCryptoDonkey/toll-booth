@@ -74,6 +74,7 @@ export function memoryStorage(): StorageBackend {
     },
 
     settleWithCredit(paymentHash: string, amount: number, settlementSecret?: string, currency: Currency = 'sat'): boolean {
+      if (amount < 0) throw new RangeError('settleWithCredit amount must not be negative')
       if (settled.has(paymentHash)) return false
       settled.set(paymentHash, settlementSecret)
       claims.delete(paymentHash)

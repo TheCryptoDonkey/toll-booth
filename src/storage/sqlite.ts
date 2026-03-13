@@ -239,6 +239,7 @@ export function sqliteStorage(config?: SqliteStorageConfig): StorageBackend {
   })
 
   const txnSettleWithCredit = db.transaction((paymentHash: string, amount: number, settlementSecret?: string, currency: Currency = 'sat') => {
+    if (amount < 0) throw new RangeError('settleWithCredit amount must not be negative')
     const r = stmtSettle.run(paymentHash, settlementSecret ?? null)
     if (r.changes > 0) {
       if (currency === 'usd') {
