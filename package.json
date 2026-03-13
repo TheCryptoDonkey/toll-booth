@@ -1,6 +1,6 @@
 {
   "name": "@thecryptodonkey/toll-booth",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "type": "module",
   "description": "Monetise any API with HTTP 402 payments. Payment-rail agnostic middleware for Express, Hono, Deno, Bun, and Workers.",
   "license": "MIT",
@@ -96,7 +96,7 @@
     "test:integration:cashu": "bash scripts/test-integration.sh --cashu-only",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build && npm test",
-    "postinstall": "patch-package"
+    "prepare": "patch-package"
   },
   "dependencies": {
     "better-sqlite3": "^11.8.0",
