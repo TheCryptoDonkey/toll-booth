@@ -1,10 +1,21 @@
 // src/core/types.ts
+import { createHash } from 'node:crypto'
 import type { LightningBackend, CreditTier, PaymentEvent, RequestEvent, ChallengeEvent } from '../types.js'
 import type { StorageBackend, StoredInvoice } from '../storage/interface.js'
 import type { PaymentRail, PriceInfo, PricingEntry } from './payment-rail.js'
 
 /** Matches a valid 64-char lowercase hex payment hash. */
 export const PAYMENT_HASH_RE = /^[0-9a-f]{64}$/
+
+/**
+ * One-way hash of an IP address with a daily-rotating salt.
+ * Rate limiting still works (same IP produces same hash within a day),
+ * but the raw IP cannot be recovered from storage.
+ */
+export function hashIp(ip: string): string {
+  const daySalt = new Date().toISOString().slice(0, 10)
+  return createHash('sha256').update(`${daySalt}:${ip}`).digest('hex').slice(0, 32)
+}
 
 export interface TollBoothRequest {
   method: string

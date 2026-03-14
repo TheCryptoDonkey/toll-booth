@@ -4,6 +4,7 @@ import { FreeTier, CreditFreeTier, type IFreeTier } from '../free-tier.js'
 import { createL402Rail } from './l402-rail.js'
 import { normalisePricing, normalisePricingTable, isTieredPricing } from './payment-rail.js'
 import type { Currency, PriceInfo, TieredPricing } from './payment-rail.js'
+import { hashIp } from './types.js'
 import type { TollBoothRequest, TollBoothResult, TollBoothCoreConfig, ReconcileResult } from './types.js'
 
 export interface TollBoothEngine {
@@ -15,6 +16,7 @@ export interface TollBoothEngine {
 
 /** Valid tier name: lowercase alphanumeric, hyphens, underscores; 1-32 chars. */
 const TIER_NAME_RE = /^[a-z0-9_-]{1,32}$/
+
 
 /** Normalise a single tier value (number or PriceInfo) to PriceInfo. */
 function normaliseTierValue(value: number | PriceInfo): PriceInfo {
@@ -110,7 +112,7 @@ export function createTollBooth(config: TollBoothCoreConfig): TollBoothEngine {
             defaultAmount,
             l402Data.macaroon as string,
             statusToken,
-            req.ip,
+            hashIp(req.ip),
           )
           l402Data.payment_url = `/invoice-status/${paymentHash}?token=${statusToken}`
           l402Data.status_token = statusToken

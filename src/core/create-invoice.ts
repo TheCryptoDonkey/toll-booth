@@ -4,6 +4,7 @@ import QRCode from 'qrcode'
 import type { LightningBackend, CreditTier } from '../types.js'
 import type { StorageBackend } from '../storage/interface.js'
 import { mintMacaroon } from '../macaroon.js'
+import { hashIp } from './types.js'
 import type { CreateInvoiceRequest, CreateInvoiceResult } from './types.js'
 
 /** Caveat keys that control monetary value and must not be set by clients. */
@@ -32,8 +33,9 @@ export async function handleCreateInvoice(
   request: CreateInvoiceRequest,
 ): Promise<CreateInvoiceResult> {
   try {
-    if (deps.maxPendingPerIp && request.clientIp) {
-      const pending = deps.storage.pendingInvoiceCount(request.clientIp)
+    const ipHash = request.clientIp ? hashIp(request.clientIp) : undefined
+    if (deps.maxPendingPerIp && ipHash) {
+      const pending = deps.storage.pendingInvoiceCount(ipHash)
       if (pending >= deps.maxPendingPerIp) {
         return { success: false, error: 'Invoice creation rate limit exceeded', status: 429 }
       }
@@ -97,7 +99,7 @@ export async function handleCreateInvoice(
     const macaroon = mintMacaroon(deps.rootKey, paymentHash, creditSats, request.caveats)
     const statusToken = randomBytes(32).toString('hex')
 
-    deps.storage.storeInvoice(paymentHash, bolt11 ?? '', creditSats, macaroon, statusToken, request.clientIp)
+    deps.storage.storeInvoice(paymentHash, bolt11 ?? '', creditSats, macaroon, statusToken, ipHash)
 
     const qrSvg = bolt11
       ? await QRCode.toString(

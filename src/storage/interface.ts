@@ -55,7 +55,7 @@ export interface StorageBackend {
    */
   extendRecoveryLease(paymentHash: string, leaseMs: number): boolean
   storeInvoice(paymentHash: string, bolt11: string, amountSats: number, macaroon: string, statusToken: string, clientIp?: string): void
-  /** Count pending (unpaid) invoices for a given client IP. */
+  /** Count pending (unpaid) invoices for a given client IP hash. */
   pendingInvoiceCount(clientIp: string): number
   getInvoice(paymentHash: string): StoredInvoice | undefined
   getInvoiceForStatus(paymentHash: string, statusToken: string): StoredInvoice | undefined
