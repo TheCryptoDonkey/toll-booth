@@ -142,6 +142,15 @@ app.listen(port, async () => {
   console.log(`  pricing: 5/21/42 sats (cracker/standard/premium), 3 free/day`)
 
   // Announce on Nostr relays for decentralised discovery
+  const jokeOutputSchema = {
+    type: 'object',
+    properties: {
+      setup: { type: 'string' },
+      punchline: { type: 'string' },
+      topic: { type: 'string', enum: topics },
+      quality: { type: 'string', enum: ['cracker', 'standard', 'premium'] },
+    },
+  }
   const announceRelays = (process.env.ANNOUNCE_RELAYS ?? '').split(',').map(r => r.trim()).filter(Boolean)
   const publicUrl = process.env.PUBLIC_URL
   if (announceRelays.length > 0 && publicUrl) {
@@ -177,9 +186,21 @@ app.listen(port, async () => {
         paymentMethods: ['bitcoin-lightning-bolt11'],
         topics: ['jokes', 'humour', 'bitcoin', 'lightning', 'nostr', 'l402'],
         capabilities: [
-          { name: 'cracker-joke', description: 'Bad puns and groaners (5 sats)' },
-          { name: 'standard-joke', description: 'Solid jokes across 6 topics (21 sats)' },
-          { name: 'premium-joke', description: 'Top-shelf comedy (42 sats)' },
+          {
+            name: 'cracker-joke',
+            description: 'Bad puns and groaners (5 sats)',
+            outputSchema: jokeOutputSchema,
+          },
+          {
+            name: 'standard-joke',
+            description: 'Solid jokes across 6 topics (21 sats)',
+            outputSchema: jokeOutputSchema,
+          },
+          {
+            name: 'premium-joke',
+            description: 'Top-shelf comedy (42 sats)',
+            outputSchema: jokeOutputSchema,
+          },
         ],
       })
       console.log(`  announced on ${announceRelays.length} relay(s) as ${announcement.pubkey}`)
