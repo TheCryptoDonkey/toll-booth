@@ -1,0 +1,45 @@
+# toll-booth
+
+HTTP 402 payment middleware for Node.js. Gates any API behind Lightning, Cashu, or NWC payments.
+
+## Install
+
+```bash
+npm install @thecryptodonkey/toll-booth
+```
+
+## Minimal Example
+
+```typescript
+import express from 'express'
+import { Booth } from '@thecryptodonkey/toll-booth'
+import { phoenixdBackend } from '@thecryptodonkey/toll-booth/backends/phoenixd'
+
+const app = express()
+const booth = new Booth({
+  adapter: 'express',
+  backend: phoenixdBackend({ url: 'http://localhost:9740', password: process.env.PHOENIXD_PASSWORD! }),
+  pricing: { '/api': 10 },
+  upstream: 'http://localhost:8080',
+})
+
+app.get('/invoice-status/:paymentHash', booth.invoiceStatusHandler as any)
+app.post('/create-invoice', booth.createInvoiceHandler as any)
+app.use('/', booth.middleware as any)
+app.listen(3000)
+```
+
+## Key Facts
+
+- Adapters: `'express'`, `'web-standard'` (Deno/Bun/Workers), `'hono'`
+- Backends: Phoenixd, LND, CLN, LNbits, NWC; or Cashu-only (no Lightning node)
+- Credit system with volume discount tiers
+- Optional per-IP daily free tier
+- SQLite persistence (WAL mode) or in-memory storage
+- Privacy by design; IP addresses are one-way hashed
+
+## Links
+
+- Repository: https://github.com/TheCryptoDonkey/toll-booth
+- npm: https://www.npmjs.com/package/@thecryptodonkey/toll-booth
+- Full docs: llms-full.txt

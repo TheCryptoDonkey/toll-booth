@@ -398,11 +398,17 @@ See [docs/configuration.md](docs/configuration.md) for the full reference includ
 
 ---
 
-## Vision
+## Documentation
 
-**[Why L402?](docs/vision.md)** - the case for permissionless, machine-to-machine payments on the web.
-
-**[Architecture](docs/architecture.md)** - how toll-booth, satgate, and 402-mcp fit together.
+| Document | Description |
+|----------|-------------|
+| **[Why L402?](docs/vision.md)** | The case for permissionless, machine-to-machine payments |
+| **[Architecture](docs/architecture.md)** | How toll-booth, satgate, and 402-mcp fit together |
+| **[Configuration](docs/configuration.md)** | Full reference for all Booth options |
+| **[Deployment](docs/deployment.md)** | Docker, nginx, Cloudflare Workers, Deno, Bun, Hono |
+| **[Security](docs/security.md)** | Threat model, macaroon security, hardening measures |
+| **[Migration](docs/migration.md)** | Upgrading from v1 to v2, and v2 to v3 |
+| **[Contributing](CONTRIBUTING.md)** | Development setup, conventions, adding backends |
 
 ---
 

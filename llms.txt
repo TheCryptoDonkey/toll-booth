@@ -88,8 +88,13 @@ Booth instance properties:
 - `.resetFreeTier()` — reset daily free-tier counters
 - `.close()` — clean up timers and database connections
 
-## Optional
+## Documentation
 
 - [Vision: The Vending Machine Web](docs/vision.md) — why L402 and permissionless machine-to-machine payments matter
-- [Example: Valhalla routing proxy](examples/valhalla-proxy/) — complete Docker Compose deployment gating a routing engine behind Lightning payments
+- [Architecture](docs/architecture.md) — how toll-booth, satgate, and 402-mcp fit together
+- [Deployment guide](docs/deployment.md) — Docker, nginx, Cloudflare Workers, Deno, Bun, Hono
+- [Security guide](docs/security.md) — threat model, macaroon security, hardening measures
+- [Migration guide](docs/migration.md) — upgrading across major versions
 - [Production checklist](README.md#production-checklist) — deployment best practices
+- [Example: Valhalla routing proxy](examples/valhalla-proxy/) — complete Docker Compose deployment
+- [Full API reference](llms-full.txt) — complete type definitions and examples
