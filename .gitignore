@@ -12,3 +12,5 @@ valhalla-tiles/
 *.db-wal
 *.macaroon
 docs/superpowers/
+.superpowers/
+.playwright-mcp/
