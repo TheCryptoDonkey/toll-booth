@@ -45,7 +45,8 @@ export { DEFAULT_USDC_ASSETS } from './core/x402-types.js'
 // Utilities
 export { mintMacaroon, verifyMacaroon, parseCaveats } from './macaroon.js'
 export type { VerifyContext, VerifyResult } from './macaroon.js'
-export { FreeTier } from './free-tier.js'
+export { FreeTier, CreditFreeTier } from './free-tier.js'
+export type { IFreeTier } from './free-tier.js'
 export { StatsCollector } from './stats.js'
 export { renderPaymentPage, renderErrorPage } from './payment-page.js'
 

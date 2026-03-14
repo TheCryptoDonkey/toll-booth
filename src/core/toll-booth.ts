@@ -1,6 +1,7 @@
 // src/core/toll-booth.ts
 import { randomBytes } from 'node:crypto'
-import { FreeTier } from '../free-tier.js'
+import { FreeTier, CreditFreeTier } from '../free-tier.js'
+import type { IFreeTier } from '../free-tier.js'
 import { createL402Rail } from './l402-rail.js'
 import { normalisePricing, normalisePricingTable, isTieredPricing } from './payment-rail.js'
 import type { Currency, PriceInfo, TieredPricing } from './payment-rail.js'
@@ -9,7 +10,7 @@ import type { TollBoothRequest, TollBoothResult, TollBoothCoreConfig, ReconcileR
 export interface TollBoothEngine {
   handle(req: TollBoothRequest): Promise<TollBoothResult>
   reconcile(paymentHash: string, actualCost: number): ReconcileResult
-  freeTier: FreeTier | null
+  freeTier: IFreeTier | null
   upstream: string
 }
 

@@ -104,7 +104,7 @@ export interface BoothConfig {
    * Optional free-tier configuration. Requests matching these criteria
    * bypass the payment requirement.
    */
-  freeTier?: { requestsPerDay: number }
+  freeTier?: { requestsPerDay: number } | { creditsPerDay: number }
 
   /**
    * Default invoice amount in satoshis. Controls how many credits are

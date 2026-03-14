@@ -35,7 +35,7 @@ export interface TollBoothCoreConfig {
   defaultInvoiceAmount?: number
   strictPricing?: boolean
   rootKey: string
-  freeTier?: { requestsPerDay: number }
+  freeTier?: { requestsPerDay: number } | { creditsPerDay: number }
   creditTiers?: CreditTier[]
   rails?: PaymentRail[]
   normalisedPricing?: Record<string, PriceInfo>
