@@ -1,3 +1,20 @@
+# [1.4.0](https://github.com/TheCryptoDonkey/toll-booth/compare/v1.3.1...v1.4.0) (2026-03-14)
+
+
+### Bug Fixes
+
+* add .releaserc.json and create v1.3.1 GitHub release for semantic-release ([d2bf12b](https://github.com/TheCryptoDonkey/toll-booth/commit/d2bf12bb4177b1e51ce3fac2e9cd238bfb141df2))
+* add fetch-tags to CI checkout for semantic-release ([0c630f4](https://github.com/TheCryptoDonkey/toll-booth/commit/0c630f4fb58eccc8236f2cb953bca2f7ee826148))
+* resolve TypeScript narrowing for freeTier union type ([404ef57](https://github.com/TheCryptoDonkey/toll-booth/commit/404ef57d5fe2c707cc1091544bee1c59442f83c2))
+
+
+### Features
+
+* add CreditFreeTier for usage-based daily free tier ([4570cd5](https://github.com/TheCryptoDonkey/toll-booth/commit/4570cd54328f6224c20477eedce7cba245b40411))
+* usage-based free tier with creditsPerDay ([55e1f9f](https://github.com/TheCryptoDonkey/toll-booth/commit/55e1f9f4a7016091ac1415ae06cf9899b3fa67f4))
+* widen freeTier config and engine type for creditsPerDay ([c69501d](https://github.com/TheCryptoDonkey/toll-booth/commit/c69501dad46eec848034cfd2e71877b9aa5c926c))
+* wire CreditFreeTier into engine for usage-based free tier ([e77b495](https://github.com/TheCryptoDonkey/toll-booth/commit/e77b495d994cef97cbb0fbde113b03e77189f334))
+
 # 1.0.0 (2026-03-14)
 
 
