@@ -16,7 +16,7 @@ COPY examples/valhalla-proxy/package.json ./
 RUN sed -i 's|"file:../../"|"file:./toll-booth.tgz"|' package.json
 RUN npm install
 COPY examples/valhalla-proxy/server.ts ./
-RUN chown -R app:app /app
+RUN mkdir -p /data && chown -R app:app /app /data
 USER app
 EXPOSE 3000
 CMD ["node", "--import", "tsx", "server.ts"]
