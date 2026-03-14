@@ -1,7 +1,7 @@
 # toll-booth L402 demo
 # Each scene clears the screen for maximum legibility at small sizes.
 #
-# Run:  cd toll-booth && vhs demo/demo.tape
+# Run:  cd toll-booth && npm run build && vhs demo/demo.tape
 
 Output "demo/toll-booth-demo.gif"
 
@@ -27,8 +27,8 @@ Enter
 Sleep 1s
 Show
 
-# ── Scene 1: Boot the server (real, visible banner) ──────────────────────────
-Type "npx tsx demo/demo.ts &"
+# ── Scene 1: Boot the server ─────────────────────────────────────────────────
+Type "node dist/cli.js demo &"
 Enter
 Sleep 4s
 
@@ -47,7 +47,7 @@ Hide
 Type "echo ''"
 Enter
 Show
-Type "echo '# Free tier - 1 request per day, no payment needed'"
+Type "echo '# Free tier - no payment needed'"
 Enter
 Sleep 3s
 
@@ -55,7 +55,12 @@ Sleep 3s
 Hide
 Type "clear"
 Enter
-Sleep 300ms
+# Burn remaining free-tier requests
+Type "curl -s localhost:3000/api/joke > /dev/null"
+Enter
+Type "curl -s localhost:3000/api/joke > /dev/null"
+Enter
+Sleep 500ms
 Show
 
 Type `curl -s -w '\nHTTP %{http_code}\n' -o /dev/null localhost:3000/api/joke`

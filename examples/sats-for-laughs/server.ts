@@ -1,11 +1,13 @@
 import { randomBytes, createHash } from 'node:crypto'
-import { readFileSync } from 'node:fs'
-import { resolve, dirname } from 'node:path'
+import { readFileSync, mkdirSync, writeFileSync } from 'node:fs'
+import { resolve, dirname, join } from 'node:path'
+import { homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import express from 'express'
 import { Booth, memoryStorage } from '@thecryptodonkey/toll-booth'
 import { phoenixdBackend } from '@thecryptodonkey/toll-booth/backends/phoenixd'
 import type { LightningBackend, Invoice, InvoiceStatus, StorageBackend } from '@thecryptodonkey/toll-booth'
+import type { Announcement } from '402-announce'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const MOCK = (process.env.MOCK ?? 'false') === 'true'
@@ -128,7 +130,9 @@ app.get('/invoice-status/:paymentHash', booth.invoiceStatusHandler as express.Re
 app.post('/create-invoice', booth.createInvoiceHandler as express.RequestHandler)
 app.use('/', booth.middleware as express.RequestHandler)
 
-app.listen(port, () => {
+let announcement: Announcement | undefined
+
+app.listen(port, async () => {
   const qualityCounts = { cracker: 0, standard: 0, premium: 0 }
   jokes.forEach(j => qualityCounts[j.quality]++)
   console.log(`sats-for-laughs listening on :${port}`)
@@ -136,9 +140,57 @@ app.listen(port, () => {
   console.log(`  jokes loaded: ${jokes.length}`)
   console.log(`  quality: ${qualityCounts.cracker} cracker, ${qualityCounts.standard} standard, ${qualityCounts.premium} premium`)
   console.log(`  pricing: 5/21/42 sats (cracker/standard/premium), 3 free/day`)
+
+  // Announce on Nostr relays for decentralised discovery
+  const announceRelays = (process.env.ANNOUNCE_RELAYS ?? '').split(',').map(r => r.trim()).filter(Boolean)
+  const publicUrl = process.env.PUBLIC_URL
+  if (announceRelays.length > 0 && publicUrl) {
+    try {
+      const { announceService } = await import('402-announce')
+
+      let announceKey = process.env.ANNOUNCE_KEY ?? ''
+      if (!announceKey) {
+        const keyDir = join(homedir(), '.sats-for-laughs')
+        const keyPath = join(keyDir, 'announce.key')
+        try {
+          announceKey = readFileSync(keyPath, 'utf-8').trim()
+        } catch {
+          announceKey = randomBytes(32).toString('hex')
+          mkdirSync(keyDir, { recursive: true })
+          writeFileSync(keyPath, announceKey, { mode: 0o600 })
+          console.log(`  announce key saved to ${keyPath}`)
+        }
+      }
+
+      announcement = await announceService({
+        secretKey: announceKey,
+        relays: announceRelays,
+        identifier: `sats-for-laughs-${new URL(publicUrl).hostname}`,
+        name: `sats-for-laughs @ ${publicUrl}`,
+        url: publicUrl,
+        about: 'Lightning-paid joke API — cracker, standard, and premium jokes across 6 topics. Powered by toll-booth.',
+        pricing: [
+          { capability: 'cracker-joke', price: 5, currency: 'sats' },
+          { capability: 'standard-joke', price: 21, currency: 'sats' },
+          { capability: 'premium-joke', price: 42, currency: 'sats' },
+        ],
+        paymentMethods: ['bitcoin-lightning-bolt11'],
+        topics: ['jokes', 'humour', 'bitcoin', 'lightning', 'nostr', 'l402'],
+        capabilities: [
+          { name: 'cracker-joke', description: 'Bad puns and groaners (5 sats)' },
+          { name: 'standard-joke', description: 'Solid jokes across 6 topics (21 sats)' },
+          { name: 'premium-joke', description: 'Top-shelf comedy (42 sats)' },
+        ],
+      })
+      console.log(`  announced on ${announceRelays.length} relay(s) as ${announcement.pubkey}`)
+    } catch (err) {
+      console.warn(`  announce failed: ${err instanceof Error ? err.message : err}`)
+    }
+  }
 })
 
 function shutdown() {
+  announcement?.close()
   booth.close()
   process.exit(0)
 }
