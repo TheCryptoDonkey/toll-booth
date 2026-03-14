@@ -1,3 +1,10 @@
+# [3.2.0](https://github.com/TheCryptoDonkey/toll-booth/compare/v3.1.0...v3.2.0) (2026-03-14)
+
+
+### Features
+
+* add output schemas to sats-for-laughs Nostr announcement ([86e116d](https://github.com/TheCryptoDonkey/toll-booth/commit/86e116d8f5899ad201e0ecca2fd7f9e616e29383))
+
 # [3.1.0](https://github.com/TheCryptoDonkey/toll-booth/compare/v3.0.1...v3.1.0) (2026-03-14)
 
 
