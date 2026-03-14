@@ -1,10 +1,13 @@
 // src/core/security.test.ts
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { createHash, randomBytes } from 'node:crypto'
+import { Hono } from 'hono'
 import { createTollBooth } from './toll-booth.js'
+import { createHonoTollBooth } from '../adapters/hono.js'
 import { mintMacaroon } from '../macaroon.js'
 import { memoryStorage } from '../storage/memory.js'
 import { handleCashuRedeem } from './cashu-redeem.js'
+import { Booth } from '../booth.js'
 
 const ROOT_KEY = 'a'.repeat(64)
 
@@ -194,6 +197,176 @@ describe('status token timing-safe comparison', () => {
     expect(storage.getInvoiceForStatus(paymentHash, statusToken + 'extra')).toBeUndefined()
     // Correct token
     expect(storage.getInvoiceForStatus(paymentHash, statusToken)).toBeDefined()
+  })
+})
+
+describe('rootKey entropy detection', () => {
+  it('warns on all-same-character key', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const booth = new Booth({
+        adapter: 'express',
+        backend: { createInvoice: vi.fn(), checkInvoice: vi.fn() } as any,
+        upstream: 'http://localhost:9999',
+        pricing: { '/api': 10 },
+        rootKey: 'a'.repeat(64),
+      })
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('low entropy'))
+      booth.close()
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it('warns on repeating-pattern key with low entropy', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      // 0000...ffff repeating = only 2 distinct bytes
+      const booth = new Booth({
+        adapter: 'express',
+        backend: { createInvoice: vi.fn(), checkInvoice: vi.fn() } as any,
+        upstream: 'http://localhost:9999',
+        pricing: { '/api': 10 },
+        rootKey: '00ff'.repeat(16),
+      })
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('low entropy'))
+      booth.close()
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it('does not warn on a high-entropy key', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const booth = new Booth({
+        adapter: 'express',
+        backend: { createInvoice: vi.fn(), checkInvoice: vi.fn() } as any,
+        upstream: 'http://localhost:9999',
+        pricing: { '/api': 10 },
+        rootKey: randomBytes(32).toString('hex'),
+      })
+      // Should not have warned about entropy
+      const entropyCalls = warn.mock.calls.filter(c =>
+        typeof c[0] === 'string' && c[0].includes('entropy'),
+      )
+      expect(entropyCalls).toHaveLength(0)
+      booth.close()
+    } finally {
+      warn.mockRestore()
+    }
+  })
+})
+
+describe('Hono adapter trustProxy guard', () => {
+  it('ignores X-Forwarded-For when trustProxy is false', async () => {
+    const engine = createTollBooth({
+      storage: memoryStorage(),
+      pricing: { '/api': 10 },
+      upstream: 'http://upstream.test',
+      rootKey: ROOT_KEY,
+      defaultInvoiceAmount: 1000,
+      freeTier: { requestsPerDay: 1 },
+    })
+    const { authMiddleware } = createHonoTollBooth({ engine, trustProxy: false })
+
+    const app = new Hono()
+    app.use('/api', authMiddleware)
+    app.get('/api', (c) => c.text('ok'))
+
+    // Two requests with different X-Forwarded-For should share the same 0.0.0.0 bucket
+    const res1 = await app.request('/api', {
+      headers: { 'x-forwarded-for': '10.0.0.1' },
+    })
+    expect(res1.status).toBe(200) // free tier
+
+    const res2 = await app.request('/api', {
+      headers: { 'x-forwarded-for': '10.0.0.2' },
+    })
+    // Both hit the same 0.0.0.0 bucket; second should be 402
+    expect(res2.status).toBe(402)
+  })
+
+  it('respects X-Forwarded-For when trustProxy is true', async () => {
+    const engine = createTollBooth({
+      storage: memoryStorage(),
+      pricing: { '/api': 10 },
+      upstream: 'http://upstream.test',
+      rootKey: ROOT_KEY,
+      defaultInvoiceAmount: 1000,
+      freeTier: { requestsPerDay: 1 },
+    })
+    const { authMiddleware } = createHonoTollBooth({ engine, trustProxy: true })
+
+    const app = new Hono()
+    app.use('/api', authMiddleware)
+    app.get('/api', (c) => c.text('ok'))
+
+    // Two requests with different X-Forwarded-For should get separate buckets
+    const res1 = await app.request('/api', {
+      headers: { 'x-forwarded-for': '10.0.0.1' },
+    })
+    expect(res1.status).toBe(200)
+
+    const res2 = await app.request('/api', {
+      headers: { 'x-forwarded-for': '10.0.0.2' },
+    })
+    expect(res2.status).toBe(200) // separate bucket
+  })
+})
+
+describe('Express adapter body size guard', () => {
+  it('rejects requests with Content-Length exceeding 64KB', async () => {
+    const { default: express } = await import('express')
+    const { createExpressCreateInvoiceHandler } = await import('../adapters/express.js')
+
+    const handler = createExpressCreateInvoiceHandler({
+      deps: {
+        storage: memoryStorage(),
+        rootKey: ROOT_KEY,
+        tiers: [],
+        defaultAmount: 1000,
+      },
+    })
+
+    const app = express()
+    app.use(express.json({ limit: '1mb' })) // deliberately large limit to test our guard
+    app.post('/create-invoice', handler)
+
+    const server = app.listen(0)
+    const addr = server.address() as { port: number }
+    try {
+      // Send a body that exceeds 64KB
+      const largeBody = JSON.stringify({ data: 'x'.repeat(70_000) })
+      const res = await fetch(`http://127.0.0.1:${addr.port}/create-invoice`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: largeBody,
+      })
+      expect(res.status).toBe(413)
+    } finally {
+      server.close()
+    }
+  })
+})
+
+describe('x402 X-Payment header size limit', () => {
+  it('rejects X-Payment headers exceeding 4KB', async () => {
+    const { createX402Rail } = await import('./x402-rail.js')
+    const rail = createX402Rail({
+      receiverAddress: '0x1234',
+      network: 'base-sepolia',
+      facilitator: { verify: vi.fn() },
+    })
+
+    const result = await rail.verify({
+      method: 'GET',
+      path: '/api',
+      headers: { 'x-payment': 'x'.repeat(4097) },
+      ip: '1.2.3.4',
+    })
+
+    expect(result.authenticated).toBe(false)
   })
 })
 
