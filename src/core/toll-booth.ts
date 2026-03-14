@@ -267,7 +267,7 @@ export function createTollBooth(config: TollBoothCoreConfig): TollBoothEngine {
         // is debited upfront. If actual usage is lower, the difference is
         // not refunded to the daily budget. This is intentional — the free
         // tier is a quota, not a wallet.
-        const check = freeTier.check(req.ip, routeCost)
+        const check = freeTier.check(hashIp(req.ip), routeCost)
 
         if (check.allowed) {
           config.onRequest?.({
