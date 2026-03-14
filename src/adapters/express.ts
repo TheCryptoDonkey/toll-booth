@@ -232,6 +232,7 @@ export function createExpressMiddleware(
       jsonWithSensitiveHeaders(res, result.body, 402, challengeHeaders)
     } catch (err) {
       // Distinguish upstream network errors from programming errors
+      setSensitiveHeaders(res)
       if (err instanceof TypeError && (err.message.includes('fetch') || err.message.includes('network'))) {
         res.status(502).json({ error: 'Upstream unavailable' })
       } else if (err instanceof DOMException && err.name === 'TimeoutError') {

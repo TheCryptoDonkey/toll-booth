@@ -62,6 +62,9 @@ export function nwcBackend(config: NwcConfig): LightningBackend {
     },
 
     async checkInvoice(paymentHash: string): Promise<InvoiceStatus> {
+      if (!/^[0-9a-f]{64}$/.test(paymentHash)) {
+        return { paid: false }
+      }
       const nwc = await getClient()
       try {
         const tx = await nwc.lookupInvoice({ payment_hash: paymentHash })

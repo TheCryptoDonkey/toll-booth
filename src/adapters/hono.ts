@@ -19,8 +19,45 @@ import { applySecurityHeaders, appendVary, parseForwardedIp } from './proxy-head
 const MAX_BODY_BYTES = 65_536
 
 /**
+ * Reads the request body as text with a streaming byte limit.
+ * Aborts mid-stream when the limit is exceeded, preventing memory
+ * exhaustion from large chunked requests without a Content-Length header.
+ */
+async function readBodyTextWithinLimit(c: Context, maxBytes: number): Promise<string | undefined> {
+  const body = c.req.raw.body
+  if (!body) return ''
+
+  const reader = body.getReader()
+  const decoder = new TextDecoder()
+  let totalBytes = 0
+  let text = ''
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      totalBytes += value.byteLength
+      if (totalBytes > maxBytes) {
+        await reader.cancel()
+        return undefined
+      }
+
+      text += decoder.decode(value, { stream: true })
+    }
+
+    return text + decoder.decode()
+  } catch {
+    return undefined
+  } finally {
+    reader.releaseLock()
+  }
+}
+
+/**
  * Parses request body as JSON with a size limit.
  * Returns undefined on oversized, empty, or malformed bodies.
+ * Uses streaming reads to abort early on large chunked payloads.
  */
 async function safeParseJson<T>(c: Context, maxBytes = MAX_BODY_BYTES): Promise<T | undefined> {
   const contentLength = c.req.header('content-length')
@@ -29,8 +66,8 @@ async function safeParseJson<T>(c: Context, maxBytes = MAX_BODY_BYTES): Promise<
     if (!Number.isFinite(len) || len < 0 || len > maxBytes) return undefined
   }
   try {
-    const text = await c.req.text()
-    if (new TextEncoder().encode(text).byteLength > maxBytes) return undefined
+    const text = await readBodyTextWithinLimit(c, maxBytes)
+    if (text === undefined) return undefined
     if (!text.trim()) return {} as T
     return JSON.parse(text) as T
   } catch {
@@ -106,6 +143,15 @@ export interface HonoTollBooth {
  */
 export function createHonoTollBooth(config: HonoTollBoothConfig): HonoTollBooth {
   const { engine } = config
+
+  // Warn when free-tier is enabled without trustProxy or getClientIp
+  if (engine.freeTier && !config.trustProxy && !config.getClientIp) {
+    console.error(
+      '[toll-booth] WARNING: freeTier enabled without trustProxy in Hono adapter. ' +
+      'All clients will share the 0.0.0.0 IP bucket. ' +
+      'Set trustProxy: true or provide a getClientIp callback.',
+    )
+  }
 
   const authMiddleware: MiddlewareHandler<TollBoothEnv> = async (c, next) => {
     const req = c.req.raw

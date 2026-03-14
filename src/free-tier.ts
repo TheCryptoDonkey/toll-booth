@@ -13,12 +13,16 @@ export interface IFreeTier {
 /** Maximum number of distinct IPs tracked before new IPs are denied. */
 const MAX_TRACKED_IPS = 100_000
 
-/** Plausible IP format check to prevent arbitrary strings filling the tracking map. */
+/**
+ * Validates that a string is a plausible IP address or IP hash.
+ * More permissive than the proxy-headers version because the toll-booth
+ * engine passes hashIp() output (32-char hex) to freeTier.check().
+ */
 const IPV4_RE = /^(\d{1,3}\.){3}\d{1,3}$/
-const IPV6_RE = /^[0-9a-fA-F:]+$/
-function isPlausibleIp(value: string): boolean {
-  if (!value || value.length > 45) return false
-  return IPV4_RE.test(value) || IPV6_RE.test(value)
+const HEX_OR_IPV6_RE = /^[0-9a-fA-F:]{2,64}$/
+function isPlausibleIpOrHash(value: string): boolean {
+  if (!value || value.length > 64) return false
+  return IPV4_RE.test(value) || HEX_OR_IPV6_RE.test(value)
 }
 
 export class FreeTier implements IFreeTier {
@@ -38,7 +42,7 @@ export class FreeTier implements IFreeTier {
 
   check(ip: string, _cost?: number): FreeTierResult {
     // Reject non-IP strings to prevent arbitrary values filling the tracking map
-    if (!isPlausibleIp(ip)) {
+    if (!isPlausibleIpOrHash(ip)) {
       return { allowed: false, remaining: 0 }
     }
 
@@ -87,7 +91,7 @@ export class CreditFreeTier implements IFreeTier {
 
   check(ip: string, cost: number): FreeTierResult {
     // Reject non-IP strings to prevent arbitrary values filling the tracking map
-    if (!isPlausibleIp(ip)) {
+    if (!isPlausibleIpOrHash(ip)) {
       return { allowed: false, remaining: 0 }
     }
 

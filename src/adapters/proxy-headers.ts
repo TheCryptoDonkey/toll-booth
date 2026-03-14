@@ -49,6 +49,10 @@ export function applySecurityHeaders(headers: Headers): Headers {
   headers.set('X-Frame-Options', 'DENY')
   headers.set('Referrer-Policy', 'no-referrer')
   headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
+  headers.set(
+    'Content-Security-Policy',
+    "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; form-action 'none'; frame-ancestors 'none'",
+  )
   return headers
 }
 
@@ -71,11 +75,13 @@ export function appendVary(headers: Headers, value: string): Headers {
  * via crafted X-Forwarded-For headers.
  */
 const IPV4_RE = /^(\d{1,3}\.){3}\d{1,3}$/
-const IPV6_RE = /^[0-9a-fA-F:]+$/
+const IPV6_RE = /^[0-9a-fA-F:]{2,45}$/
 
 export function isPlausibleIp(value: string): boolean {
   if (!value || value.length > 45) return false
-  return IPV4_RE.test(value) || IPV6_RE.test(value)
+  if (IPV4_RE.test(value)) return true
+  // IPv6 must contain at least one colon
+  return IPV6_RE.test(value) && value.includes(':')
 }
 
 /**
