@@ -112,7 +112,7 @@ const booth = new Booth({
     { amountSats: 42,  creditSats: 42,  label: '1 premium joke',   tier: 'premium' },
     { amountSats: 210, creditSats: 252, label: '6 premium jokes',  tier: 'premium' },
   ],
-  rootKey: process.env.ROOT_KEY || randomBytes(32).toString('hex'),
+  rootKey: process.env.ROOT_KEY,
   trustProxy: true,
   onRequest: (event) => {
     const auth = event.authenticated ? 'L402' : 'free'
