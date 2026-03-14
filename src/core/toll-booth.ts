@@ -1,7 +1,6 @@
 // src/core/toll-booth.ts
 import { randomBytes } from 'node:crypto'
-import { FreeTier, CreditFreeTier } from '../free-tier.js'
-import type { IFreeTier } from '../free-tier.js'
+import { FreeTier, CreditFreeTier, type IFreeTier } from '../free-tier.js'
 import { createL402Rail } from './l402-rail.js'
 import { normalisePricing, normalisePricingTable, isTieredPricing } from './payment-rail.js'
 import type { Currency, PriceInfo, TieredPricing } from './payment-rail.js'
@@ -44,11 +43,13 @@ export function createTollBooth(config: TollBoothCoreConfig): TollBoothEngine {
 
   const defaultAmount = config.defaultInvoiceAmount ?? 1000
   const upstream = config.upstream.replace(/\/$/, '')
-  const freeTier: IFreeTier | null = config.freeTier
-    ? 'requestsPerDay' in config.freeTier
-      ? new FreeTier(config.freeTier.requestsPerDay)
-      : new CreditFreeTier(config.freeTier.creditsPerDay)
-    : null
+  let freeTier: IFreeTier | null = null
+  if (config.freeTier) {
+    const ft = config.freeTier
+    freeTier = 'requestsPerDay' in ft
+      ? new FreeTier(ft.requestsPerDay)
+      : new CreditFreeTier(ft.creditsPerDay)
+  }
   const storage = config.storage
 
   // Booth always provides explicit rails. This fallback exists for direct
