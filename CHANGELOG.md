@@ -1,3 +1,16 @@
+# [2.0.0](https://github.com/TheCryptoDonkey/toll-booth/compare/v1.4.0...v2.0.0) (2026-03-14)
+
+
+### Features
+
+* replace Alby backend with proper NWC backend (nostr-core) ([53c2c32](https://github.com/TheCryptoDonkey/toll-booth/commit/53c2c32b5ccedfc4a94c9c22c51efd88ad664c1c))
+
+
+### BREAKING CHANGES
+
+* albyBackend/AlbyConfig replaced by nwcBackend/NwcConfig.
+Subpath export changed from ./backends/alby to ./backends/nwc.
+
 # [1.4.0](https://github.com/TheCryptoDonkey/toll-booth/compare/v1.3.1...v1.4.0) (2026-03-14)
 
 
