@@ -1,3 +1,10 @@
+# [3.1.0](https://github.com/TheCryptoDonkey/toll-booth/compare/v3.0.1...v3.1.0) (2026-03-14)
+
+
+### Features
+
+* enhanced demo gif and sats-for-laughs example ([a61f09a](https://github.com/TheCryptoDonkey/toll-booth/commit/a61f09adee234aacbf5d5246a661d61db81fc27d))
+
 ## [3.0.1](https://github.com/TheCryptoDonkey/toll-booth/compare/v3.0.0...v3.0.1) (2026-03-14)
 
 
