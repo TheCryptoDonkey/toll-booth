@@ -29,14 +29,11 @@ Relays store exactly one event per `pubkey` + `d` tag combination. Re-publishing
 | `pmi` | `["pmi", "<method>"]` | Yes (1+) | Payment method identifier. Repeatable. |
 | `price` | `["price", "<capability>", "<amount>", "<currency>"]` | No | Per-capability pricing. Repeatable. |
 | `t` | `["t", "<topic>"]` | No | Topic tags for relay-side filtering. Repeatable. |
-| `status` | `["status", "UP\|DOWN\|CLOSED"]` | No | Self-reported service availability. |
 | `picture` | `["picture", "<url>"]` | No | Service icon or logo URL |
 
 ### Tag Conventions
 
 **`url` tag:** The base URL of the service. Clients append capability-specific paths as needed. For single-endpoint services, this is the full endpoint URL.
-
-**`status` tag:** If omitted, clients SHOULD assume `UP`.
 
 **`price` tag:** Amounts are string integers in the smallest currency unit. Capability names MUST match a corresponding `capabilities[].name` in the content JSON when both are present.
 
@@ -113,8 +110,9 @@ Clients SHOULD use filter syntax to let relays reduce bandwidth:
 After relay filtering, clients MAY further narrow results by:
 - Text search across `name`, `about`, capability names and descriptions
 - Payment method matching against wallet capabilities
-- Status filtering (skip DOWN/CLOSED services)
 - NIP-05 trust verification
+
+Clients MAY use `created_at` age as a freshness heuristic. Services SHOULD re-publish periodically (e.g. every 24 hours) to signal liveness.
 
 ## Trust
 
@@ -142,8 +140,7 @@ Clients MAY maintain whitelists of trusted service providers.
     ["t", "jokes"],
     ["t", "humor"],
     ["t", "bitcoin"],
-    ["t", "lightning"],
-    ["status", "UP"]
+    ["t", "lightning"]
   ],
   "content": "{\"capabilities\":[{\"name\":\"cracker-joke\",\"description\":\"Bad puns and groaners\"},{\"name\":\"standard-joke\",\"description\":\"Solid jokes across 6 topics\"},{\"name\":\"premium-joke\",\"description\":\"Top-shelf comedy\"}],\"version\":\"1.0.0\"}",
   "id": "<id>",
