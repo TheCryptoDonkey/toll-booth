@@ -172,6 +172,7 @@ export function memoryStorage(): StorageBackend {
       for (const [hash, inv] of invoices) {
         if (inv.createdAt < cutoff && !claims.has(hash)) {
           invoices.delete(hash)
+          invoiceIps.delete(hash)
           pruned++
         }
       }

@@ -205,11 +205,21 @@ export function createTollBooth(config: TollBoothCoreConfig): TollBoothEngine {
 
             // Track estimated cost with currency for reconciliation
             if (result.paymentId) {
-              // Evict stale entries
+              // Evict stale entries; if still at cap, drop oldest entries
               if (estimatedCosts.size >= MAX_ESTIMATED_COSTS) {
                 const now = Date.now()
                 for (const [key, entry] of estimatedCosts) {
                   if (now - entry.ts > MAX_AGE_MS) estimatedCosts.delete(key)
+                }
+                // Force-evict oldest entries if still at capacity
+                if (estimatedCosts.size >= MAX_ESTIMATED_COSTS) {
+                  const overflow = estimatedCosts.size - MAX_ESTIMATED_COSTS + 1
+                  let evicted = 0
+                  for (const key of estimatedCosts.keys()) {
+                    if (evicted >= overflow) break
+                    estimatedCosts.delete(key)
+                    evicted++
+                  }
                 }
               }
               estimatedCosts.set(result.paymentId, { cost, ts: Date.now(), currency: result.currency })

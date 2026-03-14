@@ -72,9 +72,10 @@ export function createX402Rail(config: X402RailConfig): PaymentRail {
           return { authenticated: false, paymentId: result.txHash || '', mode: 'per-request', currency: 'usd' }
         }
 
-        // Credit mode: persist balance to storage (mirrors L402 rail's settleWithCredit)
+        // Credit mode: persist balance to storage (mirrors L402 rail's settleWithCredit).
+        // Use the txHash as the settlement secret since x402 has no preimage equivalent.
         if (creditMode && storage && !storage.isSettled(result.txHash)) {
-          storage.settleWithCredit(result.txHash, result.amount, undefined, 'usd')
+          storage.settleWithCredit(result.txHash, result.amount, result.txHash, 'usd')
         }
 
         const creditBalance = creditMode && storage

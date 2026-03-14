@@ -453,14 +453,14 @@ export function sqliteStorage(config?: SqliteStorageConfig): StorageBackend {
       return result.changes
     },
 
-    pruneStaleRecords(maxAgeMs: number): number {
+    pruneStaleRecords: db.transaction((maxAgeMs: number): number => {
       const maxAgeSecs = Math.floor(maxAgeMs / 1000)
       let total = 0
       total += stmtPruneZeroCredits.run(maxAgeSecs).changes
       total += stmtPruneSettlements.run(maxAgeSecs).changes
       total += stmtPruneClaims.run(maxAgeSecs).changes
       return total
-    },
+    }),
 
     close(): void {
       db.close()
