@@ -61,7 +61,7 @@ const booth = new Booth({
 - **L402 flow** — client requests a priced endpoint, receives HTTP 402 with a Lightning invoice and macaroon, pays the invoice, then sends `Authorization: L402 <macaroon>:<preimage>` to access the API.
 - **Payment methods** — Lightning (via any backend), Cashu ecash tokens (via `redeemCashu` callback), or Nostr Wallet Connect (via `nwcPayInvoice` callback). Methods can be combined.
 - **Credit system** — payments grant a credit balance. Each request deducts from the balance. Volume discount tiers available via `creditTiers`.
-- **Free tier** — optional per-IP daily request allowance (`freeTier: { requestsPerDay: N }`). Requests under the limit bypass payment.
+- **Free tier** — optional per-IP daily allowance. Request-based: `freeTier: { requestsPerDay: N }`. Usage-based: `freeTier: { creditsPerDay: N }` (daily sats budget debited by each request's cost). Requests within the allowance bypass payment.
 - **Adapters** — `'express'` for Express 4/5, `'web-standard'` for Deno, Bun, and Cloudflare Workers.
 
 ## API Surface

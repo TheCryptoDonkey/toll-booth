@@ -391,7 +391,7 @@ The five most common options:
 | `backend` | `LightningBackend` | Lightning node (optional if using Cashu-only) |
 | `pricing` | `Record<string, number>` | Route pattern to cost in sats |
 | `upstream` | `string` | URL to proxy authorised requests to |
-| `freeTier` | `{ requestsPerDay: number }` | Daily free allowance per IP |
+| `freeTier` | `{ requestsPerDay: number }` or `{ creditsPerDay: number }` | Daily free allowance per IP (request-count or sats-budget) |
 
 See [docs/configuration.md](docs/configuration.md) for the full reference including `rootKey`, `creditTiers`, `trustProxy`, `nwcPayInvoice`, `redeemCashu`, and all other options.
 

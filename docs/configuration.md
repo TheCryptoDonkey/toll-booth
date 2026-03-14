@@ -13,7 +13,7 @@ The `Booth` constructor accepts:
 | `rootKey` | `string` | Macaroon signing key (64 hex chars). Random if omitted |
 | `dbPath` | `string` | SQLite path. Default: `./toll-booth.db` |
 | `storage` | `StorageBackend` | Custom storage (alternative to `dbPath`) |
-| `freeTier` | `{ requestsPerDay: number }` | Daily free allowance per IP |
+| `freeTier` | `{ requestsPerDay: number }` or `{ creditsPerDay: number }` | Daily free allowance per IP (request-count or sats-budget) |
 | `strictPricing` | `boolean` | Challenge unpriced routes instead of passing through |
 | `creditTiers` | `CreditTier[]` | Volume discount tiers |
 | `trustProxy` | `boolean` | Trust `X-Forwarded-For` / `X-Real-IP` |

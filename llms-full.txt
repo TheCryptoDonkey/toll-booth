@@ -81,8 +81,8 @@ interface BoothConfig {
   /** Upstream URL to proxy authorised requests to. */
   upstream: string
 
-  /** Per-IP daily free-request allowance before payment is required. */
-  freeTier?: { requestsPerDay: number }
+  /** Per-IP daily free allowance before payment is required. */
+  freeTier?: { requestsPerDay: number } | { creditsPerDay: number }
 
   /**
    * Default invoice amount in satoshis.
@@ -411,7 +411,7 @@ const booth = new Booth({
   }),
   pricing: { '/api': 10 },
   upstream: 'http://localhost:8080',
-  freeTier: { requestsPerDay: 5 },
+  freeTier: { requestsPerDay: 5 },  // or { creditsPerDay: 100 } for usage-based
   creditTiers: [
     { amountSats: 1000, creditSats: 1000, label: 'Standard' },
     { amountSats: 5000, creditSats: 5500, label: 'Pro (10% bonus)' },
@@ -483,7 +483,7 @@ const myBackend: LightningBackend = {
 ## Payment Flow
 
 1. Client requests a priced endpoint without credentials.
-2. Free tier checked per IP per day; if allowance remains the request is proxied.
+2. Free tier checked per IP per day; if allowance remains (requests or sats budget) the request is proxied.
 3. Free tier exhausted: HTTP 402 response with BOLT-11 invoice and a macaroon.
 4. Client pays via Lightning wallet, NWC, or Cashu ecash token.
 5. Client sends `Authorization: L402 <macaroon>:<preimage>` on subsequent requests.
