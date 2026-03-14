@@ -120,7 +120,7 @@ export function createTollBooth(config: TollBoothCoreConfig): TollBoothEngine {
           timestamp: new Date().toISOString(),
           endpoint: path,
           amountSats: defaultAmount,
-          clientIp: req.ip,
+
         })
 
         return { action: 'challenge', status: 402, headers: challengeHeaders, body: challengeBody }
@@ -236,7 +236,7 @@ export function createTollBooth(config: TollBoothCoreConfig): TollBoothEngine {
               remainingBalance: remaining ?? 0,
               latencyMs: Date.now() - start,
               authenticated: true,
-              clientIp: req.ip,
+    
               currency: result.currency,
               tier: resolvedTier,
             })
@@ -275,7 +275,7 @@ export function createTollBooth(config: TollBoothCoreConfig): TollBoothEngine {
             remainingBalance: 0,
             latencyMs: Date.now() - start,
             authenticated: false,
-            clientIp: req.ip,
+  
           })
           return {
             action: 'proxy',

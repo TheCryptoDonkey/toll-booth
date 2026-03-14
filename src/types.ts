@@ -226,7 +226,6 @@ export interface RequestEvent {
   remainingBalance: number
   latencyMs: number
   authenticated: boolean
-  clientIp: string
   currency?: Currency
   tier?: string
 }
@@ -238,7 +237,6 @@ export interface ChallengeEvent {
   timestamp: string
   endpoint: string
   amountSats: number
-  clientIp: string
 }
 
 /**
