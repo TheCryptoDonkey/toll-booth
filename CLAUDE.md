@@ -44,7 +44,7 @@ src/
     lnd.ts                  # LND Lightning backend (REST API)
     cln.ts                  # Core Lightning backend (clnrest API)
     lnbits.ts               # LNbits Lightning backend (REST API)
-    alby.ts                 # Alby / NWC Lightning backend
+    nwc.ts                  # Nostr Wallet Connect (NIP-47) backend
     conformance.ts          # Shared backend conformance test factory
   core/
     security.test.ts        # Security hardening tests (header injection, entropy, validation)
@@ -89,7 +89,7 @@ Backend conformance tests (`conformance.ts`) export a shared factory; each backe
 
 **Storage** is abstracted via `StorageBackend` interface. SQLite (WAL mode, better-sqlite3) is the default; `memoryStorage()` available for tests. Three tables: `credits` (balance ledger), `invoices`, `cashu_claims` (redemption leases).
 
-**Backends:** Phoenixd, LND, CLN, LNbits, and Alby. All implement `LightningBackend` interface. Cashu-only mode works without any Lightning backend.
+**Backends:** Phoenixd, LND, CLN, LNbits, and NWC. All implement `LightningBackend` interface. Cashu-only mode works without any Lightning backend.
 
 **Wallet adapters:** Optional NWC + Cashu payment methods (pluggable via `nwcPayInvoice` and `redeemCashu` callbacks). Cashu includes lease-based crash recovery.
 

@@ -59,8 +59,8 @@ export { clnBackend } from './backends/cln.js'
 export type { ClnConfig } from './backends/cln.js'
 export { lnbitsBackend } from './backends/lnbits.js'
 export type { LNbitsConfig } from './backends/lnbits.js'
-export { albyBackend } from './backends/alby.js'
-export type { AlbyConfig } from './backends/alby.js'
+export { nwcBackend } from './backends/nwc.js'
+export type { NwcConfig } from './backends/nwc.js'
 
 // Types
 export type {

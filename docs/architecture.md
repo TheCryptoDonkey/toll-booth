@@ -24,7 +24,7 @@ graph TB
     end
 
     subgraph "Payment Rails"
-        LN[Lightning<br/>Phoenixd / LND / CLN / LNbits / Alby]
+        LN[Lightning<br/>Phoenixd / LND / CLN / LNbits / NWC]
         CASHU[Cashu<br/>ecash tokens]
         NWC[NWC<br/>Nostr Wallet Connect]
         X402["x402<br/>USDC stablecoins<br/><i>(coming soon)</i>"]
@@ -139,7 +139,7 @@ graph LR
         LND_B[lndBackend]
         CLN_B[clnBackend]
         LNBITS[lnbitsBackend]
-        ALBY[albyBackend]
+        NWC_B[nwcBackend]
     end
 
     subgraph "Alternative Rails"

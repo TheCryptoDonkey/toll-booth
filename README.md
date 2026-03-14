@@ -109,8 +109,8 @@ curl -H "Authorization: L402 <macaroon>:<preimage>" https://jokes.trotters.dev/a
 ## Features
 
 - **L402 protocol** - industry-standard HTTP 402 payment flow with macaroon credentials
-- **Multiple Lightning backends** - Phoenixd, LND, CLN, LNbits, Alby
-- **Alternative payment methods** - Nostr Wallet Connect (NWC) and Cashu ecash tokens
+- **Multiple Lightning backends** - Phoenixd, LND, CLN, LNbits, NWC (any Nostr Wallet Connect wallet)
+- **Alternative payment methods** - Cashu ecash tokens
 - **Cashu-only mode** - no Lightning node required; ideal for serverless and edge deployments
 - **Credit system** - pre-paid balance with volume discount tiers
 - **Free tier** - configurable daily allowance per IP
@@ -249,7 +249,7 @@ import { phoenixdBackend } from '@thecryptodonkey/toll-booth/backends/phoenixd'
 import { lndBackend } from '@thecryptodonkey/toll-booth/backends/lnd'
 import { clnBackend } from '@thecryptodonkey/toll-booth/backends/cln'
 import { lnbitsBackend } from '@thecryptodonkey/toll-booth/backends/lnbits'
-import { albyBackend } from '@thecryptodonkey/toll-booth/backends/alby'
+import { nwcBackend } from '@thecryptodonkey/toll-booth/backends/nwc'
 ```
 
 Each backend implements the `LightningBackend` interface (`createInvoice` + `checkInvoice`).
@@ -260,7 +260,7 @@ Each backend implements the `LightningBackend` interface (`createInvoice` + `che
 | LND | Stable | Industry standard |
 | CLN | Stable | Core Lightning REST API |
 | LNbits | Stable | Any LNbits instance - self-hosted or hosted |
-| Alby (NWC) | Experimental | JSON relay transport is unauthenticated; only enable with `allowInsecureRelay: true` for local testing or a fully trusted relay |
+| NWC | Stable | Any Nostr Wallet Connect wallet (Alby Hub, Mutiny, Umbrel, Phoenix, etc.) — E2E encrypted via NIP-44 |
 
 ---
 

@@ -53,7 +53,7 @@ The web working like a vending machine. See the price. Pay. Get the thing.
 
 ### Five Lightning backends, zero lock-in
 
-toll-booth doesn't care what Lightning node you run. Phoenixd, LND, Core Lightning, LNbits, or Alby -pick the one you already have.
+toll-booth doesn't care what Lightning node you run. Phoenixd, LND, Core Lightning, LNbits, or any NWC-compatible wallet — pick the one you already have.
 
 Each backend implements a two-method interface: create an invoice, check if it's paid. That's it. Swapping backends is a one-line change.
 

@@ -55,9 +55,9 @@
       "import": "./dist/backends/cln.js",
       "types": "./dist/backends/cln.d.ts"
     },
-    "./backends/alby": {
-      "import": "./dist/backends/alby.js",
-      "types": "./dist/backends/alby.d.ts"
+    "./backends/nwc": {
+      "import": "./dist/backends/nwc.js",
+      "types": "./dist/backends/nwc.d.ts"
     },
     "./backends/lnbits": {
       "import": "./dist/backends/lnbits.js",
@@ -101,6 +101,7 @@
   "dependencies": {
     "better-sqlite3": "^11.8.0",
     "macaroon": "^3.0.4",
+    "nostr-core": "^0.4.0",
     "qrcode": "^1.5.4"
   },
   "peerDependencies": {
@@ -124,7 +125,6 @@
     "@types/better-sqlite3": "^7.6.0",
     "@types/express": "^5.0.6",
     "@types/qrcode": "^1.5.6",
-    "@types/ws": "^8.18.1",
     "express": "^5.2.1",
     "hono": "^4.12.7",
     "patch-package": "^8.0.1",
@@ -133,7 +133,5 @@
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
   },
-  "optionalDependencies": {
-    "ws": "^8.19.0"
-  }
+  "optionalDependencies": {}
 }

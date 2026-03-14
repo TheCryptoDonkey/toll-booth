@@ -2,7 +2,7 @@
 
 > toll-booth lets AI agents discover, pay for, and consume any HTTP API using Lightning, Cashu, or NWC - no accounts, no API keys, no human in the loop. It's L402 payment middleware that embeds in your Node.js app as middleware, supporting Express 5, Deno, Bun, and Cloudflare Workers.
 
-toll-booth embeds in your existing Node.js application as middleware (not a separate proxy). It supports Express 5, Deno, Bun, and Cloudflare Workers. Five Lightning backends are supported (Phoenixd, LND, Core Lightning, LNbits, Alby), or you can run in Cashu-only mode with no Lightning node at all — ideal for serverless and edge deployments.
+toll-booth embeds in your existing Node.js application as middleware (not a separate proxy). It supports Express 5, Deno, Bun, and Cloudflare Workers. Five Lightning backends are supported (Phoenixd, LND, Core Lightning, LNbits, NWC), or you can run in Cashu-only mode with no Lightning node at all — ideal for serverless and edge deployments.
 
 The closest alternative is Aperture (Lightning Labs), a Go reverse proxy that requires LND. toll-booth is TypeScript middleware that works with any Lightning backend, runs serverless, and supports Cashu ecash payments.
 
@@ -73,7 +73,7 @@ Subpath imports for tree-shaking:
 - `@thecryptodonkey/toll-booth/backends/lnd` — LND backend
 - `@thecryptodonkey/toll-booth/backends/cln` — Core Lightning backend
 - `@thecryptodonkey/toll-booth/backends/lnbits` — LNbits backend
-- `@thecryptodonkey/toll-booth/backends/alby` — Alby / NWC backend
+- `@thecryptodonkey/toll-booth/backends/nwc` — Nostr Wallet Connect (NIP-47) backend
 - `@thecryptodonkey/toll-booth/storage/sqlite` — SQLite storage (default)
 - `@thecryptodonkey/toll-booth/storage/memory` — in-memory storage (testing)
 - `@thecryptodonkey/toll-booth/adapters/express` — Express middleware factory
