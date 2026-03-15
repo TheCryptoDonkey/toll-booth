@@ -1,3 +1,11 @@
+## [3.2.5](https://github.com/TheCryptoDonkey/toll-booth/compare/v3.2.4...v3.2.5) (2026-03-15)
+
+
+### Bug Fixes
+
+* cap X-Toll-Cost reconciliation at 10x estimated cost ([9933f43](https://github.com/TheCryptoDonkey/toll-booth/commit/9933f4312b63a56dbbfae6c574d6942fe0001aa0))
+* log recovery errors and stop lease timers on close ([43a53da](https://github.com/TheCryptoDonkey/toll-booth/commit/43a53da95a8aa085e95e227df8d35e437d4539b5))
+
 ## [3.2.4](https://github.com/TheCryptoDonkey/toll-booth/compare/v3.2.3...v3.2.4) (2026-03-15)
 
 
