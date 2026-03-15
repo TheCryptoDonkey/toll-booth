@@ -194,16 +194,19 @@ app.listen(port, async () => {
           {
             name: 'cracker-joke',
             description: 'Bad puns and groaners (5 sats)',
+            endpoint: '/api/joke',
             outputSchema: jokeOutputSchema,
           },
           {
             name: 'standard-joke',
             description: 'Solid jokes across 6 topics (21 sats)',
+            endpoint: '/api/joke?tier=standard',
             outputSchema: jokeOutputSchema,
           },
           {
             name: 'premium-joke',
             description: 'Top-shelf comedy (42 sats)',
+            endpoint: '/api/joke?tier=premium',
             outputSchema: jokeOutputSchema,
           },
         ],
