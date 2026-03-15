@@ -310,6 +310,7 @@ export function createExpressInvoiceStatusHandler(
 export interface CreateInvoiceHandlerConfig {
   deps: CreateInvoiceDeps
   trustProxy?: boolean
+  getClientIp?: (req: Request) => string
 }
 
 /**
@@ -330,11 +331,13 @@ export function createExpressCreateInvoiceHandler(
   return async (req: Request, res: Response, _next: NextFunction) => {
     if (rejectOversizedBody(req, res)) return
     const body = req.body ?? {}
-    const ip = config.trustProxy
-      ? parseForwardedIp(typeof req.headers['x-forwarded-for'] === 'string' ? req.headers['x-forwarded-for'] : undefined) ??
-        parseForwardedIp(typeof req.headers['x-real-ip'] === 'string' ? req.headers['x-real-ip'] : undefined) ??
-        req.socket.remoteAddress ?? '127.0.0.1'
-      : req.socket.remoteAddress ?? '127.0.0.1'
+    const ip = config.getClientIp
+      ? config.getClientIp(req)
+      : config.trustProxy
+        ? parseForwardedIp(typeof req.headers['x-forwarded-for'] === 'string' ? req.headers['x-forwarded-for'] : undefined) ??
+          parseForwardedIp(typeof req.headers['x-real-ip'] === 'string' ? req.headers['x-real-ip'] : undefined) ??
+          req.socket.remoteAddress ?? '127.0.0.1'
+        : req.socket.remoteAddress ?? '127.0.0.1'
 
     const result = await handleCreateInvoice(deps, { ...body, clientIp: ip })
 

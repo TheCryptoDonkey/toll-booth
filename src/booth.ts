@@ -211,6 +211,7 @@ export class Booth {
         this.createInvoiceHandler = createExpressCreateInvoiceHandler({
           deps: createInvoiceDeps,
           trustProxy: config.trustProxy,
+          getClientIp: config.getClientIp,
         })
         if (nwcPayDeps) this.nwcPayHandler = createExpressNwcHandler(nwcPayDeps)
         if (cashuRedeemDeps) {

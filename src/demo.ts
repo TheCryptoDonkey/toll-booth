@@ -182,10 +182,22 @@ export async function startDemo(): Promise<void> {
   })
 
   // Gateway server
+  const MAX_BODY = 65_536
   const server = createServer((nodeReq, nodeRes) => {
     const chunks: Buffer[] = []
-    nodeReq.on('data', (chunk: Buffer) => chunks.push(chunk))
+    let totalBytes = 0
+    nodeReq.on('data', (chunk: Buffer) => {
+      totalBytes += chunk.length
+      if (totalBytes > MAX_BODY) {
+        nodeReq.destroy()
+        nodeRes.statusCode = 413
+        nodeRes.end('Request body too large')
+        return
+      }
+      chunks.push(chunk)
+    })
     nodeReq.on('end', () => {
+      if (totalBytes > MAX_BODY) return
       const body = Buffer.concat(chunks)
       const webReq = toWebRequest(nodeReq, body)
       currentClientIp = nodeReq.socket.remoteAddress ?? '127.0.0.1'
