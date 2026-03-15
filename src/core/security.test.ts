@@ -488,6 +488,126 @@ describe('Hono adapter streaming body limit', () => {
   })
 })
 
+describe('x402 settlement secret is not the txHash', () => {
+  it('generates a random secret distinct from the txHash', async () => {
+    const { createX402Rail } = await import('./x402-rail.js')
+    const storage = memoryStorage()
+    const txHash = 'abc123def456'
+
+    const rail = createX402Rail({
+      receiverAddress: '0x1234',
+      network: 'base-sepolia',
+      facilitator: {
+        verify: vi.fn().mockResolvedValue({ valid: true, txHash, amount: 100 }),
+      },
+      storage,
+    })
+
+    const result = await rail.verify({
+      method: 'GET',
+      path: '/api',
+      headers: { 'x-payment': JSON.stringify({ signature: 'sig', sender: '0x1', amount: 100, network: 'base-sepolia', nonce: 'n1' }) },
+      ip: '1.2.3.4',
+    })
+
+    expect(result.authenticated).toBe(true)
+    // The settlement secret stored must NOT be the txHash
+    const secret = storage.getSettlementSecret(txHash)
+    expect(secret).toBeDefined()
+    expect(secret).not.toBe(txHash)
+    expect(secret).toMatch(/^[0-9a-f]{64}$/)
+  })
+})
+
+describe('isPlausibleIp rejects out-of-range octets', () => {
+  it('rejects 999.999.999.999', async () => {
+    const { isPlausibleIp } = await import('../adapters/proxy-headers.js')
+    expect(isPlausibleIp('999.999.999.999')).toBe(false)
+    expect(isPlausibleIp('256.0.0.1')).toBe(false)
+    expect(isPlausibleIp('0.0.0.256')).toBe(false)
+  })
+
+  it('accepts valid IPv4', async () => {
+    const { isPlausibleIp } = await import('../adapters/proxy-headers.js')
+    expect(isPlausibleIp('192.168.1.1')).toBe(true)
+    expect(isPlausibleIp('255.255.255.255')).toBe(true)
+    expect(isPlausibleIp('0.0.0.0')).toBe(true)
+  })
+})
+
+describe('memory storage pruneStaleRecords', () => {
+  it('prunes zero-balance settled entries', () => {
+    const storage = memoryStorage()
+    const hash = randomBytes(32).toString('hex')
+    storage.settleWithCredit(hash, 100, 'secret')
+    // Drain the balance
+    storage.debit(hash, 100)
+    expect(storage.balance(hash)).toBe(0)
+
+    const pruned = storage.pruneStaleRecords(0)
+    expect(pruned).toBe(1)
+    expect(storage.isSettled(hash)).toBe(false)
+  })
+
+  it('does not prune entries with remaining balance', () => {
+    const storage = memoryStorage()
+    const hash = randomBytes(32).toString('hex')
+    storage.settleWithCredit(hash, 100, 'secret')
+
+    const pruned = storage.pruneStaleRecords(0)
+    expect(pruned).toBe(0)
+    expect(storage.isSettled(hash)).toBe(true)
+  })
+})
+
+describe('Express create-invoice handler getClientIp passthrough', () => {
+  it('uses getClientIp when provided', async () => {
+    const { default: express } = await import('express')
+    const { createExpressCreateInvoiceHandler } = await import('../adapters/express.js')
+
+    const storage = memoryStorage()
+    const handler = createExpressCreateInvoiceHandler({
+      deps: {
+        backend: {
+          createInvoice: vi.fn().mockResolvedValue({ bolt11: 'lnbc1', paymentHash: randomBytes(32).toString('hex') }),
+          checkInvoice: vi.fn(),
+        },
+        storage,
+        rootKey: ROOT_KEY,
+        tiers: [],
+        defaultAmount: 1000,
+        maxPendingPerIp: 1,
+      },
+      getClientIp: () => '10.20.30.40',
+    })
+
+    const app = express()
+    app.use(express.json())
+    app.post('/create-invoice', handler)
+
+    const server = app.listen(0)
+    const addr = server.address() as { port: number }
+    try {
+      const res = await fetch(`http://127.0.0.1:${addr.port}/create-invoice`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      })
+      expect(res.status).toBe(200)
+
+      // Second request should be rate-limited (maxPendingPerIp: 1, same IP from getClientIp)
+      const res2 = await fetch(`http://127.0.0.1:${addr.port}/create-invoice`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      })
+      expect(res2.status).toBe(429)
+    } finally {
+      server.close()
+    }
+  })
+})
+
 describe('X-Toll-Cost strict validation', () => {
   it('rejects scientific notation in toll cost', async () => {
     // This tests that '1.5e6' is not parsed as 1 (parseInt truncation bug)
