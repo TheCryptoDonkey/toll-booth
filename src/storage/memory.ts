@@ -180,16 +180,10 @@ export function memoryStorage(): StorageBackend {
     },
 
     pruneStaleRecords(_maxAgeMs: number): number {
-      // Prune settled entries with zero balance and expired claims
+      // Prune expired unsettled claims only. Settlement markers must never
+      // be removed; doing so would allow spent credentials to be replayed
+      // (isSettled returns false, settleWithCredit re-credits the balance).
       let pruned = 0
-      for (const [hash] of settled) {
-        const bal = balances.get(hash)
-        if (bal && bal.sat === 0 && bal.usd === 0) {
-          settled.delete(hash)
-          balances.delete(hash)
-          pruned++
-        }
-      }
       const now = Date.now()
       for (const [hash, claim] of claims) {
         if (!settled.has(hash) && now > claim.leaseExpiresAt + _maxAgeMs) {

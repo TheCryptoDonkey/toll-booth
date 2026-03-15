@@ -536,7 +536,7 @@ describe('isPlausibleIp rejects out-of-range octets', () => {
 })
 
 describe('memory storage pruneStaleRecords', () => {
-  it('prunes zero-balance settled entries', () => {
+  it('never removes settlement markers (prevents credential replay)', () => {
     const storage = memoryStorage()
     const hash = randomBytes(32).toString('hex')
     storage.settleWithCredit(hash, 100, 'secret')
@@ -544,9 +544,10 @@ describe('memory storage pruneStaleRecords', () => {
     storage.debit(hash, 100)
     expect(storage.balance(hash)).toBe(0)
 
+    // Pruning must NOT remove the settlement marker
     const pruned = storage.pruneStaleRecords(0)
-    expect(pruned).toBe(1)
-    expect(storage.isSettled(hash)).toBe(false)
+    expect(pruned).toBe(0)
+    expect(storage.isSettled(hash)).toBe(true)
   })
 
   it('does not prune entries with remaining balance', () => {
