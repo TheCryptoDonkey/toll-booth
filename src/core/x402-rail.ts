@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto'
 import type { TollBoothRequest } from './types.js'
 import type { PaymentRail, PriceInfo, ChallengeFragment, RailVerifyResult } from './payment-rail.js'
 import type { X402RailConfig, X402Payment } from './x402-types.js'
@@ -73,9 +74,11 @@ export function createX402Rail(config: X402RailConfig): PaymentRail {
         }
 
         // Credit mode: persist balance to storage (mirrors L402 rail's settleWithCredit).
-        // Use the txHash as the settlement secret since x402 has no preimage equivalent.
+        // Generate a random settlement secret; the txHash is public on-chain
+        // and must never be used as a bearer credential.
         if (creditMode && storage && !storage.isSettled(result.txHash)) {
-          storage.settleWithCredit(result.txHash, result.amount, result.txHash, 'usd')
+          const settlementSecret = randomBytes(32).toString('hex')
+          storage.settleWithCredit(result.txHash, result.amount, settlementSecret, 'usd')
         }
 
         const creditBalance = creditMode && storage
