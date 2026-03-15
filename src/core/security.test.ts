@@ -754,23 +754,22 @@ describe('Cashu redeem rejects overpayment', () => {
 })
 
 describe('proxy header stripping', () => {
-  it('strips cookie and forwarding headers from proxy requests', async () => {
+  it('strips authorization and host but preserves cookies and forwarding headers', async () => {
     const { stripProxyRequestHeaders } = await import('../adapters/proxy-headers.js')
     const headers = stripProxyRequestHeaders(new Headers({
+      'authorization': 'L402 mac:preimage',
+      'host': 'toll-booth.local',
       'cookie': 'session=abc123',
       'x-forwarded-for': '10.0.0.1',
-      'x-forwarded-host': 'example.com',
-      'x-forwarded-proto': 'https',
-      'x-real-ip': '10.0.0.1',
       'accept': 'application/json',
     }))
 
-    expect(headers.has('cookie')).toBe(false)
-    expect(headers.has('x-forwarded-for')).toBe(false)
-    expect(headers.has('x-forwarded-host')).toBe(false)
-    expect(headers.has('x-forwarded-proto')).toBe(false)
-    expect(headers.has('x-real-ip')).toBe(false)
-    // Non-sensitive headers should survive
+    // Auth and host are stripped (toll-booth's own credentials)
+    expect(headers.has('authorization')).toBe(false)
+    expect(headers.has('host')).toBe(false)
+    // Cookies and forwarding headers preserved for upstream
+    expect(headers.get('cookie')).toBe('session=abc123')
+    expect(headers.get('x-forwarded-for')).toBe('10.0.0.1')
     expect(headers.get('accept')).toBe('application/json')
   })
 })
