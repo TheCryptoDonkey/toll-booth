@@ -1,3 +1,10 @@
+## [3.3.1](https://github.com/TheCryptoDonkey/toll-booth/compare/v3.3.0...v3.3.1) (2026-03-15)
+
+
+### Bug Fixes
+
+* use latest for 402-announce and bust Docker npm cache on deploy ([d7d0473](https://github.com/TheCryptoDonkey/toll-booth/commit/d7d0473bf85f4031796fb46b7fa1634415bc0517))
+
 # [3.3.0](https://github.com/TheCryptoDonkey/toll-booth/compare/v3.2.6...v3.3.0) (2026-03-15)
 
 
