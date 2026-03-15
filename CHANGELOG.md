@@ -1,3 +1,10 @@
+# [3.3.0](https://github.com/TheCryptoDonkey/toll-booth/compare/v3.2.6...v3.3.0) (2026-03-15)
+
+
+### Features
+
+* add endpoint field to NIP-402 spec and sats-for-laughs config ([d63c89e](https://github.com/TheCryptoDonkey/toll-booth/commit/d63c89e22ec0303c66cc01d91c1e2892407a8ea0))
+
 ## [3.2.6](https://github.com/TheCryptoDonkey/toll-booth/compare/v3.2.5...v3.2.6) (2026-03-15)
 
 
