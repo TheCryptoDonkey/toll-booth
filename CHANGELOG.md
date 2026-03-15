@@ -1,3 +1,12 @@
+## [3.2.2](https://github.com/TheCryptoDonkey/toll-booth/compare/v3.2.1...v3.2.2) (2026-03-15)
+
+
+### Bug Fixes
+
+* harden HTTP body parsing, IP validation, and error responses ([f6684f6](https://github.com/TheCryptoDonkey/toll-booth/commit/f6684f69ebdce8edb123844e776a97c5eac713ab))
+* harden sats-for-laughs example deployment ([f903f0e](https://github.com/TheCryptoDonkey/toll-booth/commit/f903f0e0869638f97ebb8620bf2162bc4483a11c))
+* harden storage atomicity, memory cleanup, and x402 settlement ([7a63c60](https://github.com/TheCryptoDonkey/toll-booth/commit/7a63c60bbcd801c59f83c6439488d4b433be15c5))
+
 ## [3.2.1](https://github.com/TheCryptoDonkey/toll-booth/compare/v3.2.0...v3.2.1) (2026-03-14)
 
 
