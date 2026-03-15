@@ -609,6 +609,172 @@ describe('Express create-invoice handler getClientIp passthrough', () => {
   })
 })
 
+describe('SQLite settlement markers survive pruning', () => {
+  it('never removes settlement markers during pruneStaleRecords', async () => {
+    const { sqliteStorage } = await import('../storage/sqlite.js')
+    const storage = sqliteStorage()
+    const hash = randomBytes(32).toString('hex')
+
+    storage.settleWithCredit(hash, 1000, 'secret123')
+    storage.debit(hash, 1000)
+    expect(storage.balance(hash)).toBe(0)
+
+    // Prune with 0ms max age (prunes everything old)
+    storage.pruneStaleRecords(0)
+
+    // Settlement marker must survive pruning
+    expect(storage.isSettled(hash)).toBe(true)
+
+    // Attempting to re-settle must fail (replay protection)
+    expect(storage.settleWithCredit(hash, 1000, 'replayed')).toBe(false)
+
+    storage.close()
+  })
+
+  it('prevents credential replay after pruning cycle', async () => {
+    const { sqliteStorage } = await import('../storage/sqlite.js')
+    const { createL402Rail } = await import('./l402-rail.js')
+
+    const storage = sqliteStorage()
+    const { preimage, paymentHash } = makeCredential()
+    const macaroon = mintMacaroon(ROOT_KEY, paymentHash, 1000, [])
+
+    const rail = createL402Rail({
+      rootKey: ROOT_KEY,
+      storage,
+      defaultAmount: 1000,
+    })
+
+    // Verify and settle with L402 credential
+    const result1 = await rail.verify({
+      method: 'GET',
+      path: '/api',
+      headers: { authorization: `L402 ${macaroon}:${preimage}` },
+      ip: '1.2.3.4',
+    })
+    expect(result1.authenticated).toBe(true)
+
+    // Drain credits and prune
+    storage.debit(paymentHash, 1000)
+    storage.pruneStaleRecords(0)
+
+    // Replay the same credential - must NOT get new credits
+    const result2 = await rail.verify({
+      method: 'GET',
+      path: '/api',
+      headers: { authorization: `L402 ${macaroon}:${preimage}` },
+      ip: '1.2.3.4',
+    })
+    expect(result2.authenticated).toBe(true)
+    // Balance must still be 0 (no re-credit)
+    expect(result2.creditBalance).toBe(0)
+
+    storage.close()
+  })
+})
+
+describe('L402 rail settlement secret is not the preimage', () => {
+  it('generates a random settlement secret distinct from the preimage', async () => {
+    const { createL402Rail } = await import('./l402-rail.js')
+    const storage = memoryStorage()
+    const { preimage, paymentHash } = makeCredential()
+    const macaroon = mintMacaroon(ROOT_KEY, paymentHash, 1000, [])
+
+    const rail = createL402Rail({
+      rootKey: ROOT_KEY,
+      storage,
+      defaultAmount: 1000,
+    })
+
+    const result = await rail.verify({
+      method: 'GET',
+      path: '/api',
+      headers: { authorization: `L402 ${macaroon}:${preimage}` },
+      ip: '1.2.3.4',
+    })
+
+    expect(result.authenticated).toBe(true)
+    const secret = storage.getSettlementSecret(paymentHash)
+    expect(secret).toBeDefined()
+    // The stored secret must NOT be the raw preimage
+    expect(secret).not.toBe(preimage)
+    expect(secret).toMatch(/^[0-9a-f]{64}$/)
+  })
+})
+
+describe('Cashu redeem rejects overpayment', () => {
+  it('rejects when redeemed amount exceeds invoice amount', async () => {
+    const storage = memoryStorage()
+    const paymentHash = randomBytes(32).toString('hex')
+    const statusToken = randomBytes(32).toString('hex')
+
+    storage.storeInvoice(paymentHash, '', 1000, 'mac', statusToken, '1.2.3.4')
+
+    const result = await handleCashuRedeem(
+      {
+        redeem: async () => 2000, // returns more than the 1000 sat invoice
+        storage,
+      },
+      { token: 'cashuAbc123', paymentHash, statusToken },
+    )
+
+    expect(result.success).toBe(false)
+    if (!result.success && 'error' in result) {
+      expect(result.error).toContain('exceeds')
+      expect(result.status).toBe(400)
+    }
+  })
+
+  it('allows underpayment with warning (credits actual amount)', async () => {
+    const storage = memoryStorage()
+    const paymentHash = randomBytes(32).toString('hex')
+    const statusToken = randomBytes(32).toString('hex')
+
+    storage.storeInvoice(paymentHash, '', 1000, 'mac', statusToken, '1.2.3.4')
+
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const result = await handleCashuRedeem(
+        {
+          redeem: async () => 500, // returns less than the 1000 sat invoice
+          storage,
+        },
+        { token: 'cashuAbc123', paymentHash, statusToken },
+      )
+
+      expect(result.success).toBe(true)
+      if (result.success) {
+        expect(result.credited).toBe(500)
+      }
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('amount mismatch'))
+    } finally {
+      warn.mockRestore()
+    }
+  })
+})
+
+describe('proxy header stripping', () => {
+  it('strips cookie and forwarding headers from proxy requests', async () => {
+    const { stripProxyRequestHeaders } = await import('../adapters/proxy-headers.js')
+    const headers = stripProxyRequestHeaders(new Headers({
+      'cookie': 'session=abc123',
+      'x-forwarded-for': '10.0.0.1',
+      'x-forwarded-host': 'example.com',
+      'x-forwarded-proto': 'https',
+      'x-real-ip': '10.0.0.1',
+      'accept': 'application/json',
+    }))
+
+    expect(headers.has('cookie')).toBe(false)
+    expect(headers.has('x-forwarded-for')).toBe(false)
+    expect(headers.has('x-forwarded-host')).toBe(false)
+    expect(headers.has('x-forwarded-proto')).toBe(false)
+    expect(headers.has('x-real-ip')).toBe(false)
+    // Non-sensitive headers should survive
+    expect(headers.get('accept')).toBe('application/json')
+  })
+})
+
 describe('X-Toll-Cost strict validation', () => {
   it('rejects scientific notation in toll cost', async () => {
     // This tests that '1.5e6' is not parsed as 1 (parseInt truncation bug)
