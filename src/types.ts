@@ -80,6 +80,16 @@ export interface CreditTier {
 }
 
 /**
+ * Configuration for the xcashu (NUT-24) payment rail.
+ */
+export interface XCashuConfig {
+  /** Accepted Cashu mint URLs (1+) */
+  mints: string[]
+  /** Currency unit, default 'sat' */
+  unit?: Currency
+}
+
+/**
  * Configuration for a toll-booth instance.
  */
 export interface BoothConfig {
@@ -174,6 +184,12 @@ export interface BoothConfig {
 
   /** x402 stablecoin payment rail configuration. */
   x402?: X402RailConfig
+
+  /**
+   * xcashu (NUT-24) config — accept Cashu ecash via X-Cashu header.
+   * Proofs are swapped at the configured mint(s) using cashu-ts.
+   */
+  xcashu?: XCashuConfig
 
   /**
    * Human-readable service name used in Lightning invoice descriptions.
