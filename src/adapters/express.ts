@@ -206,7 +206,8 @@ export function createExpressMiddleware(
           const tollCostHeader = upstream_res.headers.get('x-toll-cost')
           if (tollCostHeader !== null && /^\d+$/.test(tollCostHeader)) {
             const actualCost = parseInt(tollCostHeader, 10)
-            if (Number.isSafeInteger(actualCost) && actualCost >= 0) {
+            const maxAllowed = (result.estimatedCost ?? actualCost) * 10
+            if (Number.isSafeInteger(actualCost) && actualCost >= 0 && actualCost <= maxAllowed) {
               const reconciled = engine.reconcile(result.paymentHash, actualCost)
               if (reconciled.adjusted) {
                 res.setHeader('X-Credit-Balance', String(reconciled.newBalance))
