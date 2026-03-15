@@ -1,3 +1,13 @@
+## [3.2.4](https://github.com/TheCryptoDonkey/toll-booth/compare/v3.2.3...v3.2.4) (2026-03-15)
+
+
+### Bug Fixes
+
+* add overpayment guard to Booth.recoverPendingClaims ([318c8c7](https://github.com/TheCryptoDonkey/toll-booth/commit/318c8c74098494b9f67c4f61b9063cc79a08c785))
+* add overpayment guard to Cashu recovery-lease path ([54836f0](https://github.com/TheCryptoDonkey/toll-booth/commit/54836f0b04f890c34ac588896046ceafd403603f))
+* harden settlement replay protection, secret leakage, and header forwarding ([0be05cc](https://github.com/TheCryptoDonkey/toll-booth/commit/0be05cc93e997daf23731933901b41d978dff06e))
+* revert cookie and forwarding header stripping from proxy requests ([2182a86](https://github.com/TheCryptoDonkey/toll-booth/commit/2182a86805601db92788b2b273d9b734eed17eff))
+
 ## [3.2.3](https://github.com/TheCryptoDonkey/toll-booth/compare/v3.2.2...v3.2.3) (2026-03-15)
 
 
