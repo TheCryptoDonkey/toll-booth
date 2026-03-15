@@ -180,8 +180,24 @@ export function memoryStorage(): StorageBackend {
     },
 
     pruneStaleRecords(_maxAgeMs: number): number {
-      // Memory storage is for testing only — no long-running pruning needed
-      return 0
+      // Prune settled entries with zero balance and expired claims
+      let pruned = 0
+      for (const [hash] of settled) {
+        const bal = balances.get(hash)
+        if (bal && bal.sat === 0 && bal.usd === 0) {
+          settled.delete(hash)
+          balances.delete(hash)
+          pruned++
+        }
+      }
+      const now = Date.now()
+      for (const [hash, claim] of claims) {
+        if (!settled.has(hash) && now > claim.leaseExpiresAt + _maxAgeMs) {
+          claims.delete(hash)
+          pruned++
+        }
+      }
+      return pruned
     },
 
     close(): void {

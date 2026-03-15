@@ -79,7 +79,10 @@ const IPV6_RE = /^[0-9a-fA-F:]{2,45}$/
 
 export function isPlausibleIp(value: string): boolean {
   if (!value || value.length > 45) return false
-  if (IPV4_RE.test(value)) return true
+  if (IPV4_RE.test(value)) {
+    // Reject octets > 255
+    return value.split('.').every(o => parseInt(o, 10) <= 255)
+  }
   // IPv6 must contain at least one colon
   return IPV6_RE.test(value) && value.includes(':')
 }

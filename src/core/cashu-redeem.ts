@@ -84,6 +84,12 @@ export async function handleCashuRedeem(
       if (credited < 0) {
         return { success: false, error: 'Redeem callback returned negative amount', status: 500 }
       }
+      if (invoice.amountSats !== undefined && credited !== invoice.amountSats) {
+        console.warn(
+          `[toll-booth] Cashu redeem amount mismatch for ${paymentHash}: ` +
+          `expected ${invoice.amountSats}, got ${credited}`,
+        )
+      }
       const settlementSecret = randomBytes(32).toString('hex')
       const newlySettled = deps.storage.settleWithCredit(paymentHash, credited, settlementSecret)
       return {

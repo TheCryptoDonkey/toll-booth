@@ -87,6 +87,7 @@
   "files": [
     "dist",
     "!dist/**/*.map",
+    "!dist/**/*.d.ts.map",
     "llms.txt"
   ],
   "scripts": {

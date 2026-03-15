@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto'
 import type { LightningBackend, Invoice, InvoiceStatus } from '../types.js'
 import { PAYMENT_HASH_RE } from '../core/types.js'
 
@@ -30,7 +31,7 @@ export function clnBackend(config: ClnConfig): LightningBackend {
 
   return {
     async createInvoice(amountSats: number, memo?: string): Promise<Invoice> {
-      const label = `toll-booth-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      const label = `toll-booth-${Date.now()}-${randomBytes(6).toString('hex')}`
 
       const res = await fetch(`${baseUrl}/v1/invoice`, {
         method: 'POST',
