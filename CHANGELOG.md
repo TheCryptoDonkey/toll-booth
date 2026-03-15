@@ -1,3 +1,11 @@
+## [3.2.6](https://github.com/TheCryptoDonkey/toll-booth/compare/v3.2.5...v3.2.6) (2026-03-15)
+
+
+### Bug Fixes
+
+* enable Nostr announcement for sats-for-laughs ([9dcd0cf](https://github.com/TheCryptoDonkey/toll-booth/commit/9dcd0cfc4bf8c4eb216974de712cbe8dcb95fecb))
+* use DATA_DIR for announce key storage in Docker ([31917da](https://github.com/TheCryptoDonkey/toll-booth/commit/31917da7ade0628a450b98d5d83806ecc8539054))
+
 ## [3.2.5](https://github.com/TheCryptoDonkey/toll-booth/compare/v3.2.4...v3.2.5) (2026-03-15)
 
 
