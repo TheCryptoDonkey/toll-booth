@@ -99,8 +99,11 @@ export function createL402Rail(config: L402RailConfig): PaymentRail {
       // First-time settlement — credits the balance.
       // Only reachable with a valid proof (Lightning preimage or Cashu secret).
       // If settleWithCredit loses a race, another request already settled — continue.
+      // Use a random settlement secret rather than the raw preimage to avoid
+      // leaking the bearer credential via getSettlementSecret / invoice-status.
       if (!storage.isSettled(paymentHash)) {
-        storage.settleWithCredit(paymentHash, creditBalance, preimage)
+        const secret = randomBytes(32).toString('hex')
+        storage.settleWithCredit(paymentHash, creditBalance, secret)
       }
 
       // Return current balance — engine will debit and check sufficiency

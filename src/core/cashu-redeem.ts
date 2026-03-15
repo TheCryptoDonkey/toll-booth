@@ -89,6 +89,10 @@ export async function handleCashuRedeem(
           `[toll-booth] Cashu redeem amount mismatch for ${paymentHash}: ` +
           `expected ${invoice.amountSats}, got ${credited}`,
         )
+        // Reject overpayment to prevent credit inflation via a malicious redeem callback
+        if (credited > invoice.amountSats) {
+          return { success: false, error: 'Redeemed amount exceeds invoice amount', status: 400 }
+        }
       }
       const settlementSecret = randomBytes(32).toString('hex')
       const newlySettled = deps.storage.settleWithCredit(paymentHash, credited, settlementSecret)

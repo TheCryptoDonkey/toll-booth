@@ -219,10 +219,9 @@ export function sqliteStorage(config?: SqliteStorageConfig): StorageBackend {
       AND datetime(updated_at) <= datetime('now', '-' || ? || ' seconds')
   `)
 
-  const stmtPruneSettlements = db.prepare(`
-    DELETE FROM settlements
-    WHERE datetime(settled_at) <= datetime('now', '-' || ? || ' seconds')
-  `)
+  // Settlement markers must NEVER be pruned — doing so would allow spent
+  // credentials to be replayed (isSettled returns false, settleWithCredit
+  // re-credits the balance). This matches the memory storage invariant.
 
   const stmtPruneClaims = db.prepare(`
     DELETE FROM claims
@@ -457,7 +456,7 @@ export function sqliteStorage(config?: SqliteStorageConfig): StorageBackend {
       const maxAgeSecs = Math.floor(maxAgeMs / 1000)
       let total = 0
       total += stmtPruneZeroCredits.run(maxAgeSecs).changes
-      total += stmtPruneSettlements.run(maxAgeSecs).changes
+      // Settlement markers are intentionally never pruned (replay protection).
       total += stmtPruneClaims.run(maxAgeSecs).changes
       return total
     }),
