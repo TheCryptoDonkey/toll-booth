@@ -101,15 +101,15 @@ describe('handleCreateInvoice', () => {
     expect(result.data?.amountSats).toBe(500)
   })
 
-  it('rejects amount not matching any tier', async () => {
+  it('accepts custom amount at 1:1 when not matching a tier', async () => {
     const tiers: CreditTier[] = [
       { amountSats: 500, creditSats: 555, label: '500 sats' },
     ]
     const deps = makeDeps({ tiers })
     const result = await handleCreateInvoice(deps, { amountSats: 750 })
-    expect(result.success).toBe(false)
-    expect(result.error).toBe('Invalid amount. Choose from available tiers.')
-    expect(result.tiers).toEqual(tiers)
+    expect(result.success).toBe(true)
+    expect(result.data?.amountSats).toBe(750)
+    expect(result.data?.creditSats).toBe(750) // no bonus for custom amounts
   })
 
   it('creditSats equals amountSats when no tiers configured', async () => {

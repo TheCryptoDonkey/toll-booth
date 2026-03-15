@@ -66,18 +66,14 @@ export async function handleCreateInvoice(
       return { success: false, error: 'amountSats must be a positive integer' }
     }
 
-    // Find matching tier or validate amount
+    // Find matching tier for bonus credits, or accept custom amount at 1:1
     let creditSats = requestedAmount
     if (deps.tiers.length > 0) {
       const tier = deps.tiers.find(t => t.amountSats === requestedAmount)
-      if (!tier) {
-        return {
-          success: false,
-          error: 'Invalid amount. Choose from available tiers.',
-          tiers: deps.tiers,
-        }
+      if (tier) {
+        creditSats = tier.creditSats
       }
-      creditSats = tier.creditSats
+      // Custom amounts are accepted at 1:1 (no bonus) — no rejection
     }
 
     let paymentHash: string

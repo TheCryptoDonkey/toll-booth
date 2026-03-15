@@ -101,6 +101,11 @@ export function createTollBooth(config: TollBoothCoreConfig): TollBoothEngine {
           challengeBody.tiers = normaliseTiersMap(pricedEntry)
         }
 
+        // Include credit purchase tiers so clients can offer volume discounts
+        if (config.creditTiers && config.creditTiers.length > 0) {
+          challengeBody.credit_tiers = config.creditTiers
+        }
+
         // Store invoice data from L402 rail if present
         const l402Data = challengeBody.l402 as Record<string, unknown> | undefined
         if (l402Data?.payment_hash) {

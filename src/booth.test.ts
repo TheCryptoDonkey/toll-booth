@@ -283,7 +283,7 @@ describe('Booth', () => {
     booth.close()
   })
 
-  it('rejects invalid tier in POST /create-invoice', async () => {
+  it('accepts custom amount at 1:1 in POST /create-invoice', async () => {
     const { request, booth } = setup()
 
     const res = await request('/create-invoice', {
@@ -292,9 +292,10 @@ describe('Booth', () => {
       body: JSON.stringify({ amountSats: 5000 }),
     })
 
-    expect(res.status).toBe(400)
+    expect(res.status).toBe(200)
     const body = await res.json()
-    expect(body.error).toContain('Invalid amount')
+    expect(body.bolt11).toBeTruthy()
+    expect(body.credit_sats).toBe(5000) // no bonus for custom amounts
 
     booth.close()
   })
