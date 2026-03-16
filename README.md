@@ -110,7 +110,7 @@ curl -H "Authorization: L402 <macaroon>:<preimage>" https://jokes.trotters.dev/a
 
 - **L402 protocol** - industry-standard HTTP 402 payment flow with macaroon credentials
 - **Multiple Lightning backends** - Phoenixd, LND, CLN, LNbits, NWC (any Nostr Wallet Connect wallet)
-- **Alternative payment methods** - Cashu ecash tokens
+- **Alternative payment methods** - Cashu ecash tokens and xcashu (NUT-24) direct-header payments
 - **Cashu-only mode** - no Lightning node required; ideal for serverless and edge deployments
 - **Credit system** - pre-paid balance with volume discount tiers
 - **Free tier** - configurable daily allowance (IP-hashed, no PII stored)
@@ -240,6 +240,26 @@ const booth = new Booth({
 ```
 
 No Lightning node, no channels, no liquidity management. Ideal for serverless and edge deployments.
+
+### xcashu (Cashu ecash via NUT-24)
+
+```typescript
+import { Booth } from '@thecryptodonkey/toll-booth'
+
+const booth = new Booth({
+  adapter: 'web-standard',
+  xcashu: {
+    mints: ['https://mint.minibits.cash'],
+    unit: 'sat',
+  },
+  pricing: { '/api': 10 },
+  upstream: 'http://localhost:3000',
+})
+```
+
+Clients pay by sending `X-Cashu: cashuB...` tokens in the request header. Proofs are verified and swapped at the configured mint(s) using cashu-ts.
+
+Unlike the `redeemCashu` callback (which integrates Cashu into the L402 payment-and-redeem flow), `xcashu` is a self-contained payment rail: the client attaches a token directly to the API request and gets access in one step — no separate redeem endpoint required. Both rails can run simultaneously; the 402 challenge will include both `WWW-Authenticate` (L402) and `X-Cashu` headers.
 
 ---
 
