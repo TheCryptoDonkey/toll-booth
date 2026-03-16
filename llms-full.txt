@@ -1,6 +1,6 @@
 # toll-booth — Complete API Reference
 
-> toll-booth lets AI agents discover, pay for, and consume any HTTP API using Lightning, Cashu, or NWC - no accounts, no API keys, no human in the loop. It's L402 payment middleware that embeds in your Node.js app as middleware, supporting Express 5, Deno, Bun, and Cloudflare Workers.
+> toll-booth lets AI agents discover, pay for, and consume any HTTP API using Lightning, Cashu, NWC, or x402 stablecoins - no accounts, no API keys, no human in the loop. It's payment-rail agnostic HTTP 402 middleware that embeds in your Node.js app, supporting Express 5, Hono, Deno, Bun, and Cloudflare Workers.
 
 ## Installation
 
@@ -17,7 +17,7 @@ npm install @thecryptodonkey/toll-booth
 | `@thecryptodonkey/toll-booth/backends/lnd` | `lndBackend` |
 | `@thecryptodonkey/toll-booth/backends/cln` | `clnBackend` |
 | `@thecryptodonkey/toll-booth/backends/lnbits` | `lnbitsBackend` |
-| `@thecryptodonkey/toll-booth/backends/alby` | `albyBackend` |
+| `@thecryptodonkey/toll-booth/backends/nwc` | `nwcBackend` |
 | `@thecryptodonkey/toll-booth/storage/sqlite` | `sqliteStorage` |
 | `@thecryptodonkey/toll-booth/storage/memory` | `memoryStorage` |
 | `@thecryptodonkey/toll-booth/adapters/express` | Express adapter factories |
@@ -317,21 +317,22 @@ lnbitsBackend(config: LNbitsConfig): LightningBackend
 
 Works with self-hosted or hosted LNbits instances.
 
-### Alby / NWC
+### NWC (Nostr Wallet Connect)
 
 ```typescript
-import { albyBackend } from '@thecryptodonkey/toll-booth/backends/alby'
+import { nwcBackend } from '@thecryptodonkey/toll-booth/backends/nwc'
 
-interface AlbyConfig {
-  nwcUrl: string              // nostr+walletconnect://pubkey?relay=wss://...&secret=...
+interface NwcConfig {
+  /** NWC connection URI: nostr+walletconnect://pubkey?relay=wss://...&secret=... */
+  nwcUrl: string
+  /** Reply timeout in ms (default: 60000) */
   timeout?: number
-  allowInsecureRelay?: boolean // must be true; see note below
 }
 
-albyBackend(config: AlbyConfig): LightningBackend
+nwcBackend(config: NwcConfig): LightningBackend
 ```
 
-The Alby backend uses an unauthenticated JSON relay transport. It must be explicitly opted into with `allowInsecureRelay: true`; suitable only for local testing or a fully trusted relay.
+Works with any NWC-compatible wallet (Alby Hub, Mutiny, Umbrel, Phoenix, and others). Communication is end-to-end encrypted over Nostr relays using NIP-44.
 
 ## Storage Backend
 
