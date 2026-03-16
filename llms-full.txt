@@ -216,7 +216,20 @@ interface InvoiceStatus {
   preimage?: string
 }
 
-type PricingTable = Record<string, number>
+type Currency = 'sat' | 'usd'
+
+interface PriceInfo {
+  sats?: number
+  usd?: number
+}
+
+/** Tier map: keys are tier names (must include 'default'), values are prices. */
+type TieredPricing = Record<string, number | PriceInfo>
+
+/** Accepts number (backward-compat sats), PriceInfo, or a tiered pricing map. */
+type PricingEntry = number | PriceInfo | TieredPricing
+
+type PricingTable = Record<string, PricingEntry>
 
 interface CreditTier {
   amountSats: number   // what the user pays
@@ -237,14 +250,14 @@ interface RequestEvent {
   remainingBalance: number
   latencyMs: number
   authenticated: boolean
-  clientIp: string
+  currency?: Currency
+  tier?: string
 }
 
 interface ChallengeEvent {
   timestamp: string
   endpoint: string
   amountSats: number
-  clientIp: string
 }
 
 type EventHandler = {
