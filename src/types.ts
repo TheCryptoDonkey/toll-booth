@@ -77,6 +77,8 @@ export interface CreditTier {
   amountUsd?: number
   /** x402 tier credit in cents (USD). */
   creditUsd?: number
+  /** What the agent gets for this tier, e.g. "1 request", "10 minutes access". */
+  yields?: string
 }
 
 /**
@@ -197,6 +199,12 @@ export interface BoothConfig {
    * like `"satgate: 1000 sats credit"`.
    */
   serviceName?: string
+
+  /**
+   * Service description shown in 402 response bodies.
+   * Only included when `serviceName` is also set.
+   */
+  description?: string
 
   /**
    * Timeout in milliseconds for upstream proxy requests.
