@@ -158,6 +158,8 @@ export class Booth {
       freeTier: config.freeTier,
       strictPricing: config.strictPricing,
       creditTiers: config.creditTiers,
+      serviceName: config.serviceName,
+      description: config.description,
       rails,
       onPayment: (event) => {
         stats.recordPayment(event)
