@@ -207,4 +207,59 @@ describe('xcashu-rail verify (mocked)', () => {
 
     expect(result.authenticated).toBe(false)
   })
+
+  it('fires onProofsReceived callback after successful verify', async () => {
+    const onProofsReceived = vi.fn()
+
+    const { createXCashuRail } = await import('./xcashu-rail.js')
+    const rail = createXCashuRail({ ...config, onProofsReceived })
+    const result = await rail.verify(makeReq({ 'x-cashu': 'cashuBvalidtoken' }))
+
+    expect(result.authenticated).toBe(true)
+    expect(onProofsReceived).toHaveBeenCalledOnce()
+    expect(onProofsReceived).toHaveBeenCalledWith(
+      [{ amount: 10 }],             // proofs from wallet.receive()
+      'https://mint.example.com',    // mint URL
+      10,                            // credited amount
+    )
+  })
+
+  it('does not fire onProofsReceived on verify failure', async () => {
+    mockGetDecodedToken.mockReturnValue({
+      mint: 'https://wrong.mint',
+      unit: 'sat',
+      proofs: [{ amount: 10, id: 'key1', C: 'sig1', secret: 's1' }],
+    })
+
+    const onProofsReceived = vi.fn()
+
+    const { createXCashuRail } = await import('./xcashu-rail.js')
+    const rail = createXCashuRail({ ...config, onProofsReceived })
+    const result = await rail.verify(makeReq({ 'x-cashu': 'cashuBvalidtoken' }))
+
+    expect(result.authenticated).toBe(false)
+    expect(onProofsReceived).not.toHaveBeenCalled()
+  })
+
+  it('does not block verify if onProofsReceived throws', async () => {
+    const onProofsReceived = vi.fn().mockImplementation(() => { throw new Error('callback exploded') })
+
+    const { createXCashuRail } = await import('./xcashu-rail.js')
+    const rail = createXCashuRail({ ...config, onProofsReceived })
+    const result = await rail.verify(makeReq({ 'x-cashu': 'cashuBvalidtoken' }))
+
+    expect(result.authenticated).toBe(true)
+    expect(onProofsReceived).toHaveBeenCalled()
+  })
+
+  it('does not block verify if onProofsReceived returns rejected promise', async () => {
+    const onProofsReceived = vi.fn().mockRejectedValue(new Error('async callback exploded'))
+
+    const { createXCashuRail } = await import('./xcashu-rail.js')
+    const rail = createXCashuRail({ ...config, onProofsReceived })
+    const result = await rail.verify(makeReq({ 'x-cashu': 'cashuBvalidtoken' }))
+
+    expect(result.authenticated).toBe(true)
+    expect(onProofsReceived).toHaveBeenCalled()
+  })
 })
