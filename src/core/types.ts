@@ -52,6 +52,8 @@ export interface TollBoothCoreConfig {
   normalisedPricing?: Record<string, PriceInfo>
   /** Human-readable service name for invoice descriptions. Defaults to 'toll-booth'. */
   serviceName?: string
+  /** Service description for 402 response bodies. */
+  description?: string
   onPayment?: (event: PaymentEvent) => void
   onRequest?: (event: RequestEvent) => void
   onChallenge?: (event: ChallengeEvent) => void
