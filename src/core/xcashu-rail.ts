@@ -109,6 +109,18 @@ export function createXCashuRail(config: XCashuConfig, storage?: StorageBackend)
         return FAIL
       }
 
+      // Fire onProofsReceived callback (non-blocking, fire-and-forget)
+      if (config.onProofsReceived) {
+        try {
+          const cbResult = config.onProofsReceived(receivedProofs, tokenMint, creditedAmount)
+          if (cbResult && typeof (cbResult as Promise<void>).catch === 'function') {
+            (cbResult as Promise<void>).catch(() => {})
+          }
+        } catch {
+          // Callback errors silently discarded — never block the payment flow
+        }
+      }
+
       // Generate payment ID and settlement secret
       const paymentId = randomBytes(32).toString('hex')
       const settlementSecret = randomBytes(32).toString('hex')

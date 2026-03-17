@@ -48,6 +48,7 @@ export interface LightningBackend {
   checkInvoice(paymentHash: string): Promise<InvoiceStatus>
 }
 
+import type { Proof } from '@cashu/cashu-ts'
 import type { Currency, PricingEntry } from './core/payment-rail.js'
 import type { X402RailConfig } from './core/x402-types.js'
 
@@ -89,6 +90,12 @@ export interface XCashuConfig {
   mints: string[]
   /** Currency unit, default 'sat' */
   unit?: Currency
+  /**
+   * Called after successful token swap with the server-side proofs.
+   * Fire-and-forget — the rail does NOT await this callback.
+   * Use for melting, persisting, or forwarding received ecash.
+   */
+  onProofsReceived?: (proofs: Proof[], mintUrl: string, amount: number) => void | Promise<void>
 }
 
 /**
