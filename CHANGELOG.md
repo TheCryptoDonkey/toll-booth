@@ -1,3 +1,23 @@
+# [3.5.0](https://github.com/TheCryptoDonkey/toll-booth/compare/v3.4.0...v3.5.0) (2026-03-17)
+
+
+### Bug Fixes
+
+* patch cashu-ts 3.6.0 normalizeMintQuoteBolt11Response for undefined amount ([fe19ee9](https://github.com/TheCryptoDonkey/toll-booth/commit/fe19ee9c78d8863ac25f54bb14568315cc9535db))
+
+
+### Features
+
+* add @cashu/cashu-ts dependency for xcashu rail ([810ac83](https://github.com/TheCryptoDonkey/toll-booth/commit/810ac83b0745cc689620efb8759f0ed90052cb25))
+* add booth and auth_hint to 402 response body ([dd48e05](https://github.com/TheCryptoDonkey/toll-booth/commit/dd48e053d2c6b8dc8db62dec9c4ade49b7d0c567))
+* add description to BoothConfig and yields to CreditTier ([3479996](https://github.com/TheCryptoDonkey/toll-booth/commit/3479996a2185d2b26670266cfeeaf59989c32683))
+* add description to TollBoothCoreConfig ([634b48f](https://github.com/TheCryptoDonkey/toll-booth/commit/634b48f65d04e00c803106b904356d3348c8d1b4))
+* add xcashu (NUT-24) payment rail ([d77c092](https://github.com/TheCryptoDonkey/toll-booth/commit/d77c092c980105eb76d9e848548c694abec97143))
+* add XCashuConfig type to BoothConfig ([5f6333e](https://github.com/TheCryptoDonkey/toll-booth/commit/5f6333e5b0ef250b6d8206d19d5f4d1f4b617315))
+* export createXCashuRail and XCashuConfig from public API ([045b7e8](https://github.com/TheCryptoDonkey/toll-booth/commit/045b7e8aa80a7f78495c7d9e91d7395e35c574d2))
+* forward serviceName and description through Booth facade ([4733f0f](https://github.com/TheCryptoDonkey/toll-booth/commit/4733f0fad74f522303b8a45f54ea9e7f0fe3da88))
+* wire xcashu rail into Booth constructor ([90256d8](https://github.com/TheCryptoDonkey/toll-booth/commit/90256d8c68bb81b80ba5324ec59118b0f3719797))
+
 # [3.4.0](https://github.com/TheCryptoDonkey/toll-booth/compare/v3.3.1...v3.4.0) (2026-03-15)
 
 
