@@ -217,6 +217,14 @@ export function createWebStandardMiddleware(
       }
     }
 
+    // blocked — 403
+    if (result.action === 'blocked') {
+      return Response.json(result.body, {
+        status: 403,
+        headers: new Headers(extraHeaders),
+      })
+    }
+
     // challenge — 402
     const challengeHeaders = new Headers(extraHeaders)
     for (const [key, value] of Object.entries(result.headers)) {
