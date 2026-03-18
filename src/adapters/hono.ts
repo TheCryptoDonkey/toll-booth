@@ -181,6 +181,9 @@ export function createHonoTollBooth(config: HonoTollBoothConfig): HonoTollBooth 
     }
 
     if (result.action === 'blocked') {
+      c.header('Cache-Control', 'no-store')
+      c.header('Pragma', 'no-cache')
+      c.header('X-Content-Type-Options', 'nosniff')
       return c.json(result.body, 403)
     }
 

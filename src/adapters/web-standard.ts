@@ -219,9 +219,12 @@ export function createWebStandardMiddleware(
 
     // blocked — 403
     if (result.action === 'blocked') {
+      const blockedHeaders = new Headers(extraHeaders)
+      blockedHeaders.set('Cache-Control', 'no-store')
+      blockedHeaders.set('X-Content-Type-Options', 'nosniff')
       return Response.json(result.body, {
         status: 403,
-        headers: new Headers(extraHeaders),
+        headers: blockedHeaders,
       })
     }
 
