@@ -758,6 +758,61 @@ describe('config validation and challenge tiers map', () => {
   })
 })
 
+describe('geo-fence', () => {
+  it('blocks requests from a blocked country', async () => {
+    const engine = createTollBooth(makeConfig({
+      blockedCountries: ['KP', 'IR'],
+      countryHeader: 'CF-IPCountry',
+    }))
+    const result = await engine.handle(makeRequest({
+      headers: { 'cf-ipcountry': 'KP' },
+    }))
+    expect(result.action).toBe('blocked')
+    expect(result).toHaveProperty('status', 403)
+    expect(result).toHaveProperty('body', { error: 'Forbidden' })
+  })
+
+  it('passes requests from an unblocked country', async () => {
+    const engine = createTollBooth(makeConfig({
+      blockedCountries: ['KP', 'IR'],
+      countryHeader: 'CF-IPCountry',
+    }))
+    const result = await engine.handle(makeRequest({
+      path: '/health',
+      headers: { 'cf-ipcountry': 'GB' },
+    }))
+    expect(result.action).toBe('pass')
+  })
+
+  it('passes when country header is absent (fail-open)', async () => {
+    const engine = createTollBooth(makeConfig({
+      blockedCountries: ['KP', 'IR'],
+      countryHeader: 'CF-IPCountry',
+    }))
+    const result = await engine.handle(makeRequest({ path: '/health' }))
+    expect(result.action).toBe('pass')
+  })
+
+  it('skips check when blockedCountries is not configured', async () => {
+    const engine = createTollBooth(makeConfig())
+    const result = await engine.handle(makeRequest({
+      path: '/health',
+      headers: { 'cf-ipcountry': 'KP' },
+    }))
+    expect(result.action).toBe('pass')
+  })
+
+  it('defaults countryHeader to CF-IPCountry', async () => {
+    const engine = createTollBooth(makeConfig({
+      blockedCountries: ['KP'],
+    }))
+    const result = await engine.handle(makeRequest({
+      headers: { 'cf-ipcountry': 'KP' },
+    }))
+    expect(result.action).toBe('blocked')
+  })
+})
+
 describe('agent-friendly 402 body', () => {
   it('includes booth and auth_hint when serviceName is configured', async () => {
     const engine = createTollBooth(makeConfig({

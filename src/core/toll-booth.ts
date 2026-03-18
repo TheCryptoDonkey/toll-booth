@@ -1,6 +1,7 @@
 // src/core/toll-booth.ts
 import { randomBytes } from 'node:crypto'
 import { FreeTier, CreditFreeTier, type IFreeTier } from '../free-tier.js'
+import { isBlockedCountry } from '../geo-fence.js'
 import { createL402Rail } from './l402-rail.js'
 import { normalisePricing, normalisePricingTable, isTieredPricing } from './payment-rail.js'
 import type { Currency, PriceInfo, TieredPricing } from './payment-rail.js'
@@ -78,6 +79,15 @@ export function createTollBooth(config: TollBoothCoreConfig): TollBoothEngine {
     async handle(req: TollBoothRequest): Promise<TollBoothResult> {
       const start = Date.now()
       const path = req.path
+
+      // Geo-fence: block requests from sanctioned/restricted countries
+      if (config.blockedCountries?.length) {
+        const header = config.countryHeader ?? 'CF-IPCountry'
+        if (isBlockedCountry(req.headers, header, config.blockedCountries)) {
+          return { action: 'blocked', status: 403, body: { error: 'Forbidden' } }
+        }
+      }
+
       const pricedEntry = config.pricing[path]
 
       // Inner helper: issue a multi-rail 402 challenge for this route

@@ -83,7 +83,7 @@ async function safeParseJson<T>(c: Context, maxBytes = MAX_BODY_BYTES): Promise<
  */
 export type TollBoothEnv = {
   Variables: {
-    tollBoothAction: 'proxy' | 'pass'
+    tollBoothAction: 'proxy' | 'pass' | 'blocked'
     tollBoothPaymentHash: string | undefined
     tollBoothEstimatedCost: number | undefined
     tollBoothCreditBalance: number | undefined
@@ -178,6 +178,13 @@ export function createHonoTollBooth(config: HonoTollBoothConfig): HonoTollBooth 
       c.header('Pragma', 'no-cache')
       c.header('X-Content-Type-Options', 'nosniff')
       return c.json(result.body, result.status as 402, result.headers)
+    }
+
+    if (result.action === 'blocked') {
+      c.header('Cache-Control', 'no-store')
+      c.header('Pragma', 'no-cache')
+      c.header('X-Content-Type-Options', 'nosniff')
+      return c.json(result.body, 403)
     }
 
     // 'proxy' or 'pass' — set context variables and continue

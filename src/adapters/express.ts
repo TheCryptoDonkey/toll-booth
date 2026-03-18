@@ -222,6 +222,13 @@ export function createExpressMiddleware(
         return
       }
 
+      // blocked -- 403
+      if (result.action === 'blocked') {
+        const blockedHeaders = new Headers(extraHeaders)
+        jsonWithSensitiveHeaders(res, result.body, 403, blockedHeaders)
+        return
+      }
+
       // challenge -- 402
       const challengeHeaders = new Headers()
       for (const [key, value] of Object.entries(result.headers)) {
