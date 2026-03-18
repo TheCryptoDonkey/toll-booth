@@ -1,3 +1,4 @@
+/** Internal normalised payment (flat structure passed to facilitator). */
 export interface X402Payment {
   signature: string
   sender: string
@@ -24,6 +25,8 @@ export interface X402RailConfig {
   facilitator: X402Facilitator
   creditMode?: boolean  // default: true
   facilitatorUrl?: string
+  /** Max seconds before payment authorisation expires. Default 3600. */
+  maxTimeoutSeconds?: number
   /** Storage backend — required for credit mode to persist balances. Injected by Booth. */
   storage?: import('../storage/interface.js').StorageBackend
 }
@@ -33,4 +36,49 @@ export const DEFAULT_USDC_ASSETS: Record<string, string> = {
   'base': '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
   'base-sepolia': '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
   'polygon': '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359',
+}
+
+// ── x402 v2 wire format types ──────────────────────────────────────
+
+export const X402_VERSION = 2
+
+export interface X402PaymentRequirements {
+  scheme: string
+  network: string
+  amount: string          // string for precision
+  asset: string
+  payTo: string
+  maxTimeoutSeconds: number
+  extra: Record<string, unknown>
+}
+
+export interface X402Resource {
+  url: string
+  description?: string
+  mimeType?: string
+}
+
+/** PAYMENT-REQUIRED header (base64-encoded JSON). */
+export interface X402ChallengeWire {
+  x402Version: number
+  accepts: X402PaymentRequirements[]
+  resource?: X402Resource
+}
+
+/** PAYMENT-SIGNATURE header (base64-encoded JSON). */
+export interface X402PaymentWire {
+  x402Version: number
+  resource?: X402Resource
+  accepted?: X402PaymentRequirements
+  payload: {
+    signature: string
+    authorization: {
+      from: string
+      to: string
+      value: string
+      validAfter: string
+      validBefore: string
+      nonce: string
+    }
+  }
 }

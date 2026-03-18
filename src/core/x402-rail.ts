@@ -1,8 +1,50 @@
 import { randomBytes } from 'node:crypto'
 import type { TollBoothRequest } from './types.js'
 import type { PaymentRail, PriceInfo, ChallengeFragment, RailVerifyResult } from './payment-rail.js'
-import type { X402RailConfig, X402Payment } from './x402-types.js'
-import { DEFAULT_USDC_ASSETS } from './x402-types.js'
+import type { X402RailConfig, X402Payment, X402PaymentWire, X402ChallengeWire } from './x402-types.js'
+import { DEFAULT_USDC_ASSETS, X402_VERSION } from './x402-types.js'
+
+/**
+ * Normalise an inbound x402 v2 PAYMENT-SIGNATURE payload to the flat
+ * internal X402Payment format used by the facilitator interface.
+ */
+function normaliseV2Payload(wire: X402PaymentWire): X402Payment | undefined {
+  const auth = wire.payload?.authorization
+  if (!auth) return undefined
+  const amount = Number(auth.value)
+  if (!Number.isFinite(amount)) return undefined
+  return {
+    signature: wire.payload.signature,
+    sender: auth.from,
+    amount,
+    network: wire.accepted?.network ?? '',
+    nonce: auth.nonce,
+  }
+}
+
+/**
+ * Try to parse the payment from either the v2 PAYMENT-SIGNATURE header
+ * (base64-encoded JSON) or the legacy X-Payment header (raw JSON).
+ */
+function parsePayment(req: TollBoothRequest): X402Payment | undefined {
+  // v2: PAYMENT-SIGNATURE (base64-encoded JSON)
+  const sigHeader = req.headers['payment-signature']
+  if (sigHeader && sigHeader.length <= 8192) {
+    try {
+      const decoded = JSON.parse(Buffer.from(sigHeader, 'base64').toString()) as X402PaymentWire
+      if (decoded.x402Version >= 2) return normaliseV2Payload(decoded)
+    } catch { /* fall through to legacy */ }
+  }
+
+  // Legacy: X-Payment (raw JSON)
+  const raw = req.headers['x-payment']
+  if (!raw || raw.length > 4096) return undefined
+  try {
+    return JSON.parse(raw) as X402Payment
+  } catch {
+    return undefined
+  }
+}
 
 export function createX402Rail(config: X402RailConfig): PaymentRail {
   const {
@@ -12,6 +54,7 @@ export function createX402Rail(config: X402RailConfig): PaymentRail {
     facilitator,
     creditMode = true,
     facilitatorUrl,
+    maxTimeoutSeconds = 3600,
     storage,
   } = config
 
@@ -24,14 +67,36 @@ export function createX402Rail(config: X402RailConfig): PaymentRail {
     },
 
     detect(req: TollBoothRequest): boolean {
-      return req.headers['x-payment'] !== undefined
+      return req.headers['payment-signature'] !== undefined
+        || req.headers['x-payment'] !== undefined
     },
 
-    async challenge(_route: string, price: PriceInfo): Promise<ChallengeFragment> {
+    async challenge(route: string, price: PriceInfo): Promise<ChallengeFragment> {
+      const requirements: X402ChallengeWire = {
+        x402Version: X402_VERSION,
+        accepts: [{
+          scheme: 'exact',
+          network,
+          amount: String(price.usd),
+          asset: asset ?? '',
+          payTo: receiverAddress,
+          maxTimeoutSeconds,
+          extra: {
+            ...(facilitatorUrl && { facilitatorUrl }),
+          },
+        }],
+        resource: { url: route },
+      }
+
+      const encoded = Buffer.from(JSON.stringify(requirements)).toString('base64')
+
       return {
-        headers: { 'X-Payment-Required': 'x402' },
+        headers: {
+          'Payment-Required': encoded,
+        },
         body: {
           x402: {
+            version: X402_VERSION,
             receiver: receiverAddress,
             network,
             asset,
@@ -43,21 +108,13 @@ export function createX402Rail(config: X402RailConfig): PaymentRail {
     },
 
     async verify(req: TollBoothRequest): Promise<RailVerifyResult> {
-      const raw = req.headers['x-payment']
-      if (!raw || raw.length > 4096) {
-        return { authenticated: false, paymentId: '', mode: 'per-request', currency: 'usd' }
-      }
-
-      let payload: X402Payment
-      try {
-        payload = JSON.parse(raw)
-      } catch {
+      const payload = parsePayment(req)
+      if (!payload) {
         return { authenticated: false, paymentId: '', mode: 'per-request', currency: 'usd' }
       }
 
       // Validate required fields before passing to facilitator
       if (
-        typeof payload !== 'object' || payload === null ||
         typeof payload.signature !== 'string' || !payload.signature ||
         typeof payload.sender !== 'string' || !payload.sender ||
         typeof payload.amount !== 'number' || !Number.isFinite(payload.amount) || payload.amount <= 0 ||
