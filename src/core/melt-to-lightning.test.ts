@@ -6,11 +6,11 @@ const mockSend = vi.fn()
 const mockMeltProofsBolt11 = vi.fn()
 
 vi.mock('@cashu/cashu-ts', () => ({
-  Wallet: vi.fn(() => ({
-    createMeltQuoteBolt11: mockCreateMeltQuoteBolt11,
-    send: mockSend,
-    meltProofsBolt11: mockMeltProofsBolt11,
-  })),
+  Wallet: vi.fn(function (this: any) {
+    this.createMeltQuoteBolt11 = mockCreateMeltQuoteBolt11
+    this.send = mockSend
+    this.meltProofsBolt11 = mockMeltProofsBolt11
+  }),
 }))
 
 import { meltToLightning } from './melt-to-lightning.js'

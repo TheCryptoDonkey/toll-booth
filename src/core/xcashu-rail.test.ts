@@ -112,8 +112,8 @@ vi.mock('@cashu/cashu-ts', () => {
   const getDecodedToken = vi.fn().mockImplementation(() => {
     throw new Error('Invalid token')
   })
-  const Wallet = vi.fn()
-  const Mint = vi.fn(() => ({}))
+  const Wallet = vi.fn(function () {})
+  const Mint = vi.fn(function () {})
   return { getDecodedToken, Wallet, Mint }
 })
 
@@ -145,7 +145,9 @@ describe('xcashu-rail verify (mocked)', () => {
       loadMint: vi.fn().mockResolvedValue(undefined),
       receive: vi.fn().mockResolvedValue([{ amount: 10 }]),
     }
-    MockWallet.mockImplementation(() => mockWalletInstance)
+    MockWallet.mockImplementation(function (this: any) {
+      Object.assign(this, mockWalletInstance)
+    })
   })
 
   it('verify success path returns authenticated with credit', async () => {
