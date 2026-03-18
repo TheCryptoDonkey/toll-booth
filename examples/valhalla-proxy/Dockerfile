@@ -5,7 +5,7 @@ COPY package.json package-lock.json ./
 RUN npm ci
 COPY tsconfig.json ./
 COPY src/ ./src/
-RUN npm run build && npm pack && mv thecryptodonkey-toll-booth-*.tgz toll-booth.tgz
+RUN npm run build && npm pack && mv forgesworn-toll-booth-*.tgz toll-booth.tgz
 
 # Stage 2: Build the routing proxy
 FROM node:22-slim
