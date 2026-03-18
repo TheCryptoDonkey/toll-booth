@@ -1,3 +1,10 @@
+## [4.1.1](https://github.com/forgesworn/toll-booth/compare/v4.1.0...v4.1.1) (2026-03-18)
+
+
+### Bug Fixes
+
+* regenerate cashu-ts patch for v3.6.1 ([e323f82](https://github.com/forgesworn/toll-booth/commit/e323f82a996719b412e7c23f86ee891e44636597))
+
 # [4.1.0](https://github.com/forgesworn/toll-booth/compare/v4.0.1...v4.1.0) (2026-03-18)
 
 
