@@ -13,6 +13,7 @@
 //
 import { describe, it, expect, vi } from 'vitest'
 import { createHash, randomBytes } from 'node:crypto'
+import { importMacaroon } from 'macaroon'
 import { createTollBooth } from './toll-booth.js'
 import type { TollBoothResult } from './types.js'
 
@@ -152,6 +153,48 @@ describe('lnget v1.0.0 compatibility', () => {
       // Round-trip check: decoded bytes re-encode to same string
       const decoded = Buffer.from(macaroonBase64, 'base64')
       expect(decoded.toString('base64')).toBe(macaroonBase64)
+    })
+
+    it('macaroon identifier is aperture-compatible 66-byte binary', async () => {
+      const preimageMap = new Map<string, string>()
+      const storage = mockStorage()
+      const backend = mockBackend(preimageMap)
+
+      const engine = createTollBooth({
+        rootKey: ROOT_KEY,
+        upstream: 'http://localhost:9999',
+        pricing: { '/api/test': 100 },
+        defaultInvoiceAmount: 100,
+        storage,
+        backend,
+      })
+
+      const result = expectChallenge(await engine.handle({
+        method: 'GET',
+        path: '/api/test',
+        headers: {},
+        ip: '10.0.0.1',
+      }))
+
+      const match = LNGET_CHALLENGE_RE.exec(result.headers['WWW-Authenticate']!)!
+      const macaroonBytes = Buffer.from(match[1], 'base64')
+      const mac = importMacaroon(new Uint8Array(macaroonBytes))
+      const id = mac.identifier
+
+      // Aperture format: version(2) + paymentHash(32) + tokenId(32) = 66 bytes
+      expect(id.length).toBe(66)
+
+      // Version 0 (big-endian uint16)
+      expect(id[0]).toBe(0)
+      expect(id[1]).toBe(0)
+
+      // Bytes 2-33 are the payment hash; verify against the body
+      const body = result.body as { l402: { payment_hash: string } }
+      const expectedHash = Buffer.from(body.l402.payment_hash, 'hex')
+      expect(Buffer.from(id.slice(2, 34))).toEqual(expectedHash)
+
+      // Bytes 34-65 are the random token ID (just check it exists)
+      expect(id.slice(34, 66).length).toBe(32)
     })
 
     it('invoice in header is a bolt11 string', async () => {

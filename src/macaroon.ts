@@ -1,6 +1,16 @@
+import { randomBytes } from 'node:crypto'
 import { newMacaroon, importMacaroon } from 'macaroon'
 
 const LOCATION = 'toll-booth'
+
+/**
+ * Aperture-compatible L402 identifier layout (version 0):
+ *   [0..1]   uint16 big-endian version (0)
+ *   [2..33]  32-byte payment hash
+ *   [34..65] 32-byte random token ID
+ */
+const L402_ID_VERSION = 0
+const L402_ID_SIZE = 66
 const KNOWN_CAVEATS = new Set(['payment_hash', 'credit_balance', 'currency', 'route', 'expires', 'ip'])
 
 /** Caveat keys that encode monetary value and must not be set via the caveats parameter. */
@@ -20,7 +30,7 @@ const MAX_CUSTOM_CAVEATS = 16
 export function mintMacaroon(rootKey: string, paymentHash: string, creditBalanceSats: number, caveats?: string[], currency?: string): string {
   const keyBytes = hexToBytes(rootKey)
   const m = newMacaroon({
-    identifier: paymentHash,
+    identifier: encodeL402Identifier(paymentHash),
     location: LOCATION,
     rootKey: keyBytes,
     version: 2,
@@ -101,15 +111,16 @@ export function verifyMacaroon(rootKey: string, macaroonBase64: string, context?
       return null
     }, [])
 
-    // Use the immutable identifier as the authoritative payment hash —
-    // it is set at mint time and covered by the root signature.
-    const json = m.exportJSON() as Record<string, unknown>
-    const identifier = json.i as string
+    // Decode the aperture-compatible binary identifier to extract the
+    // payment hash.  The identifier is set at mint time and covered by
+    // the root signature, so it cannot be tampered with.
+    const paymentHash = decodeL402Identifier(m.identifier)
+    if (!paymentHash) return { valid: false }
 
     const caveats = parseCaveats(macaroonBase64)
 
     // Cross-check: the payment_hash caveat must match the identifier
-    if (caveats.payment_hash && caveats.payment_hash !== identifier) {
+    if (caveats.payment_hash && caveats.payment_hash !== paymentHash) {
       return { valid: false }
     }
 
@@ -148,7 +159,7 @@ export function verifyMacaroon(rootKey: string, macaroonBase64: string, context?
 
     return {
       valid: true,
-      paymentHash: identifier,
+      paymentHash,
       creditBalance,
       currency,
       customCaveats: Object.keys(customCaveats).length > 0 ? customCaveats : undefined,
@@ -195,12 +206,32 @@ export function parseCaveats(macaroonBase64: string): Record<string, string> {
   return result
 }
 
+function encodeL402Identifier(paymentHash: string): Uint8Array {
+  const id = new Uint8Array(L402_ID_SIZE)
+  id[0] = (L402_ID_VERSION >> 8) & 0xff
+  id[1] = L402_ID_VERSION & 0xff
+  id.set(hexToBytes(paymentHash), 2)
+  id.set(randomBytes(32), 34)
+  return id
+}
+
+function decodeL402Identifier(id: Uint8Array): string | undefined {
+  if (id.length < L402_ID_SIZE) return undefined
+  const version = (id[0] << 8) | id[1]
+  if (version !== L402_ID_VERSION) return undefined
+  return bytesToHex(id.slice(2, 34))
+}
+
 function hexToBytes(hex: string): Uint8Array {
   const bytes = new Uint8Array(hex.length / 2)
   for (let i = 0; i < hex.length; i += 2) {
     bytes[i / 2] = parseInt(hex.slice(i, i + 2), 16)
   }
   return bytes
+}
+
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('')
 }
 
 function uint8ToBase64(bytes: Uint8Array): string {
