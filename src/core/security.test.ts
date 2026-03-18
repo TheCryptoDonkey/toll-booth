@@ -210,6 +210,7 @@ describe('rootKey entropy detection', () => {
         upstream: 'http://localhost:9999',
         pricing: { '/api': 10 },
         rootKey: 'a'.repeat(64),
+        storage: memoryStorage(),
       })
       expect(warn).toHaveBeenCalledWith(expect.stringContaining('low entropy'))
       booth.close()
