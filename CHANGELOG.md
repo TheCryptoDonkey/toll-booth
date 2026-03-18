@@ -1,3 +1,10 @@
+# [3.8.0](https://github.com/TheCryptoDonkey/toll-booth/compare/v3.7.1...v3.8.0) (2026-03-18)
+
+
+### Features
+
+* align x402 wire format with v2 spec (Coinbase/Alby SDK compatible) ([990391b](https://github.com/TheCryptoDonkey/toll-booth/commit/990391b2e06aedf0b74b7488ab84b94f069747a4))
+
 ## [3.7.1](https://github.com/TheCryptoDonkey/toll-booth/compare/v3.7.0...v3.7.1) (2026-03-18)
 
 
