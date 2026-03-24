@@ -78,5 +78,14 @@ export function nwcBackend(config: NwcConfig): LightningBackend {
         return { paid: false }
       }
     },
+
+    async sendPayment(bolt11: string): Promise<{ preimage: string }> {
+      const nwc = await getClient()
+      const result = await nwc.payInvoice(bolt11)
+      if (!result.preimage) {
+        throw new Error('NWC sendPayment: response missing preimage')
+      }
+      return { preimage: result.preimage }
+    },
   }
 }
