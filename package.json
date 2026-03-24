@@ -24,12 +24,18 @@
     "typescript",
     "macaroon",
     "http-402",
+    "http-payment",
+    "ietf-payment",
     "api-monetisation",
     "payment-gateway",
+    "payment-authentication",
+    "multi-rail",
     "ai-agents",
     "machine-payments",
     "api-monetization",
-    "x402"
+    "x402",
+    "self-hosted",
+    "privacy"
   ],
   "repository": {
     "type": "git",
