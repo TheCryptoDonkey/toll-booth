@@ -325,6 +325,8 @@ Each backend implements the `LightningBackend` interface (`createInvoice` + `che
 | **Serverless** | No - long-running process | Yes - Web Standard adapter runs on Cloudflare Workers, Deno, Bun |
 | **Configuration** | YAML file | Programmatic (code) |
 
+For a detailed comparison with all alternatives, see [docs/comparison.md](docs/comparison.md).
+
 ---
 
 ## x402 stablecoin payments
