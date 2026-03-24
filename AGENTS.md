@@ -29,11 +29,16 @@ src/
   free-tier.ts              # Per-IP daily allowance tracking (in-memory)
   payment-page.ts           # Self-service HTML payment UI (QR, tier selector, wallet adapters)
   stats.ts                  # StatsCollector: in-memory usage analytics
+  cli.ts                    # CLI entry point (demo, init)
+  init.ts                   # Interactive project scaffolder
+  init-prompts.ts           # CLI prompts and flag parsing for init
+  templates/                # Generated project templates (Express, Hono, Deno, etc.)
   core/
     toll-booth.ts           # TollBoothEngine: framework-agnostic L402 payment flow
     payment-rail.ts         # PaymentRail interface and pricing normalisation
     l402-rail.ts            # L402 Lightning + macaroon payment rail
     x402-rail.ts            # x402 on-chain stablecoin payment rail
+    ietf-payment.ts         # IETF Payment auth rail (draft-ryan-httpauth-payment-01)
     create-invoice.ts       # POST /create-invoice handler
     invoice-status.ts       # GET /invoice-status/:paymentHash handler
     nwc-pay.ts              # NWC payment handler
@@ -65,7 +70,7 @@ examples/
 
 **Core engine** (`createTollBooth()`) is framework-agnostic. Adapters translate between framework requests and `TollBoothRequest`/`TollBoothResult`.
 
-**Payment rails** are pluggable via the `PaymentRail` interface. Built-in rails: L402 (Lightning + macaroon) and x402 (on-chain stablecoins). Multiple rails can run simultaneously.
+**Payment rails** are pluggable via the `PaymentRail` interface. Built-in rails: L402 (Lightning + macaroon), x402 (on-chain stablecoins), and IETF Payment (draft-ryan-httpauth-payment-01, stateless Lightning). Multiple rails can run simultaneously on a single deployment.
 
 **Storage** is abstracted via `StorageBackend`. SQLite (WAL mode) is the default; `memoryStorage()` for tests.
 

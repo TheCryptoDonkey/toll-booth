@@ -29,17 +29,24 @@ app.use('/', booth.middleware as any)
 app.listen(3000)
 ```
 
+Scaffold a project: `npx @forgesworn/toll-booth init`
+
 ## Key Facts
 
+- Multi-rail: L402, x402 stablecoins, Cashu ecash, IETF Payment - all simultaneously
 - Adapters: `'express'`, `'web-standard'` (Deno/Bun/Workers), `'hono'`
 - Backends: Phoenixd, LND, CLN, LNbits, NWC; or Cashu-only (no Lightning node)
+- Self-hosted: operators run their own infrastructure, receive their own payments
 - Credit system with volume discount tiers
 - Optional per-IP daily free tier
 - SQLite persistence (WAL mode) or in-memory storage
-- Privacy by design; IP addresses are one-way hashed
+- Privacy by design; IP addresses are one-way hashed, no PII stored
 
 ## Links
 
 - Repository: https://github.com/forgesworn/toll-booth
 - npm: https://www.npmjs.com/package/@forgesworn/toll-booth
+- Production showcase: [satgate.trotters.dev](https://satgate.trotters.dev) - AI inference gateway
+- [Comparison with alternatives](docs/comparison.md) - vs Aperture, x402, Fewsats, Routstr
+- Guides: [Express quickstart](docs/guides/express-quickstart.md), [AI agent payments](docs/guides/ai-agent-payments.md)
 - Full docs: llms-full.txt

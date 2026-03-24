@@ -2,11 +2,19 @@
 
 > toll-booth lets AI agents discover, pay for, and consume any HTTP API using Lightning, Cashu, NWC, x402 stablecoins, or IETF Payment (draft-ryan-httpauth-payment-01) - no accounts, no API keys, no human in the loop. toll-booth is the only middleware that accepts L402, x402, Cashu, and IETF Payment simultaneously. It's payment-rail agnostic HTTP 402 middleware that embeds in your Node.js app, supporting Express 5, Hono, Deno, Bun, and Cloudflare Workers.
 
-## Installation
+## Quick Start
 
 ```bash
 npm install @forgesworn/toll-booth
 ```
+
+Scaffold a new project interactively:
+
+```bash
+npx @forgesworn/toll-booth init
+```
+
+The `init` scaffolder generates a ready-to-run project for your chosen framework (Express, Hono, Deno) and backend (Phoenixd, LND, NWC, Cashu-only), with Dockerfile, environment template, and tests included.
 
 ## Subpath Exports
 
@@ -22,6 +30,7 @@ npm install @forgesworn/toll-booth
 | `@forgesworn/toll-booth/storage/memory` | `memoryStorage` |
 | `@forgesworn/toll-booth/adapters/express` | Express adapter factories |
 | `@forgesworn/toll-booth/adapters/web-standard` | Web Standard adapter factories |
+| `@forgesworn/toll-booth/hono` | Hono middleware + payment route sub-app (`createHonoTollBooth`) |
 
 Prefer subpath imports for tree-shaking in bundled environments.
 
@@ -583,5 +592,9 @@ interface IETFReceipt {
 
 - Repository: https://github.com/forgesworn/toll-booth
 - npm: https://www.npmjs.com/package/@forgesworn/toll-booth
+- Production showcase: [satgate](https://satgate.trotters.dev) - AI inference gateway built on toll-booth
+- Live demo: [jokes.trotters.dev](https://jokes.trotters.dev) - joke API behind Lightning payments
+- [Comparison with alternatives](docs/comparison.md) - feature matrix vs Aperture, x402, Fewsats, Routstr
+- Guides: [Express quickstart](docs/guides/express-quickstart.md), [AI agent payments](docs/guides/ai-agent-payments.md), [Ollama monetisation](docs/guides/ollama-monetisation.md)
 - Reference deployment: examples/valhalla-proxy/ (Docker Compose, Express + Phoenixd)
 - Licence: MIT
