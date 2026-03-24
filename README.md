@@ -293,6 +293,13 @@ Implements the [IETF Payment authentication scheme](https://datatracker.ietf.org
 
 ---
 
+## Case studies
+
+- [satgate: Pay-per-token AI inference](docs/case-studies/satgate.md)
+- [jokes.trotters.dev: From zero to production L402 API](docs/case-studies/jokes-trotters-dev.md)
+
+---
+
 ## Lightning backends
 
 ```typescript
