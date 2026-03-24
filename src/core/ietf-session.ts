@@ -472,7 +472,7 @@ export function createIETFSessionRail(config: IETFSessionRailConfig): PaymentRai
 
         // Check deposit cap
         const topupAmount = parseInt(sessionRequest.deposit.amount, 10)
-        if (session.balanceSats + topupAmount > maxDepositSats) {
+        if (session.depositSats + topupAmount > maxDepositSats) {
           return { authenticated: false, paymentId: session.sessionId, mode: 'credit', currency: 'sat' }
         }
 

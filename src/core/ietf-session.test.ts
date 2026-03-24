@@ -271,6 +271,233 @@ describe('IETF Session Rail', () => {
       expect(closeResult.customCaveats?.['X-Session-Closed']).toBe('true')
     })
 
+    it('closes an already-closed session gracefully (close replay)', async () => {
+      const rail = createRail()
+      const { result } = await openSession(rail)
+      const bearerToken = result.customCaveats!['X-Session-Token']
+      const sessionId = result.customCaveats!['X-Session-Id']
+
+      // Close via storage directly
+      storage.closeSession(sessionId)
+
+      // Attempting to close again via the rail should fail gracefully (not throw)
+      const fragment = await rail.challenge('/api/test', { sats: 500 })
+      const wwwAuth = fragment.headers['WWW-Authenticate']
+      const idMatch = wwwAuth.match(/id="([^"]+)"/)!
+      const requestMatch = wwwAuth.match(/request="([^"]+)"/)!
+      const expiresMatch = wwwAuth.match(/expires="([^"]+)"/)!
+
+      const closeCredential: IETFCredential = {
+        challenge: {
+          id: idMatch[1],
+          realm: REALM,
+          method: 'lightning',
+          intent: 'session',
+          request: requestMatch[1],
+          expires: expiresMatch[1],
+        },
+        payload: {
+          action: 'close',
+          sessionToken: bearerToken,
+        } satisfies SessionClosePayload,
+      }
+
+      const closeResult = await rail.verify(makeRequest(encodeCredential(closeCredential)))
+      // Should return unauthenticated (session already closed), not throw
+      expect(closeResult.authenticated).toBe(false)
+    })
+
+    it('skips refund gracefully when no returnInvoice was provided', async () => {
+      const rail = createRail()
+
+      // Open a session without a returnInvoice
+      const fragment = await rail.challenge('/api/test', { sats: 500 })
+      const wwwAuth = fragment.headers['WWW-Authenticate']
+      const idMatch = wwwAuth.match(/id="([^"]+)"/)!
+      const requestMatch = wwwAuth.match(/request="([^"]+)"/)!
+      const expiresMatch = wwwAuth.match(/expires="([^"]+)"/)!
+
+      const sessionRequest: SessionChallengeRequest = JSON.parse(
+        Buffer.from(requestMatch[1], 'base64url').toString()
+      )
+      const entry = invoiceMap.get(sessionRequest.deposit.paymentHash)!
+
+      const openCredential: IETFCredential = {
+        challenge: {
+          id: idMatch[1],
+          realm: REALM,
+          method: 'lightning',
+          intent: 'session',
+          request: requestMatch[1],
+          expires: expiresMatch[1],
+        },
+        payload: {
+          action: 'open',
+          preimage: entry.preimage,
+          // No returnInvoice
+        } satisfies SessionOpenPayload,
+      }
+
+      const openResult = await rail.verify(makeRequest(encodeCredential(openCredential)))
+      expect(openResult.authenticated).toBe(true)
+      const bearerToken = openResult.customCaveats!['X-Session-Token']
+
+      // Spy on sendPayment to ensure it is NOT called
+      const sendPaymentSpy = vi.spyOn(backend, 'sendPayment' as any)
+
+      // Close the session — refund should be skipped (no return invoice)
+      const closeFragment = await rail.challenge('/api/test', { sats: 500 })
+      const closeWwwAuth = closeFragment.headers['WWW-Authenticate']
+      const closeIdMatch = closeWwwAuth.match(/id="([^"]+)"/)!
+      const closeRequestMatch = closeWwwAuth.match(/request="([^"]+)"/)!
+      const closeExpiresMatch = closeWwwAuth.match(/expires="([^"]+)"/)!
+
+      const closeCredential: IETFCredential = {
+        challenge: {
+          id: closeIdMatch[1],
+          realm: REALM,
+          method: 'lightning',
+          intent: 'session',
+          request: closeRequestMatch[1],
+          expires: closeExpiresMatch[1],
+        },
+        payload: {
+          action: 'close',
+          sessionToken: bearerToken,
+        } satisfies SessionClosePayload,
+      }
+
+      const closeResult = await rail.verify(makeRequest(encodeCredential(closeCredential)))
+      expect(closeResult.authenticated).toBe(true)
+      expect(closeResult.customCaveats?.['X-Session-Closed']).toBe('true')
+      expect(sendPaymentSpy).not.toHaveBeenCalled()
+
+      sendPaymentSpy.mockRestore()
+    })
+
+    it('still closes session even if sendPayment fails during refund', async () => {
+      // Create a backend where sendPayment throws
+      const failingBackend: LightningBackend = {
+        async createInvoice(amountSats: number, memo?: string) {
+          return backend.createInvoice(amountSats, memo)
+        },
+        async checkInvoice(paymentHash: string) {
+          return backend.checkInvoice(paymentHash)
+        },
+        async sendPayment(_bolt11: string) {
+          throw new Error('Lightning node unreachable')
+        },
+      }
+
+      const rail = createIETFSessionRail({
+        hmacSecret: HMAC_SECRET,
+        realm: REALM,
+        backend: failingBackend,
+        storage,
+        session: sessionConfig,
+      })
+
+      // Open a session with a returnInvoice
+      const fragment = await rail.challenge('/api/test', { sats: 500 })
+      const wwwAuth = fragment.headers['WWW-Authenticate']
+      const idMatch = wwwAuth.match(/id="([^"]+)"/)!
+      const requestMatch = wwwAuth.match(/request="([^"]+)"/)!
+      const expiresMatch = wwwAuth.match(/expires="([^"]+)"/)!
+
+      const sessionRequest: SessionChallengeRequest = JSON.parse(
+        Buffer.from(requestMatch[1], 'base64url').toString()
+      )
+      const entry = invoiceMap.get(sessionRequest.deposit.paymentHash)!
+
+      const openCredential: IETFCredential = {
+        challenge: {
+          id: idMatch[1],
+          realm: REALM,
+          method: 'lightning',
+          intent: 'session',
+          request: requestMatch[1],
+          expires: expiresMatch[1],
+        },
+        payload: {
+          action: 'open',
+          preimage: entry.preimage,
+          returnInvoice: 'lnbc1testreturn',
+        } satisfies SessionOpenPayload,
+      }
+
+      const openResult = await rail.verify(makeRequest(encodeCredential(openCredential)))
+      expect(openResult.authenticated).toBe(true)
+      const bearerToken = openResult.customCaveats!['X-Session-Token']
+
+      // Close the session — sendPayment will throw, but close should still succeed
+      const closeFragment = await rail.challenge('/api/test', { sats: 500 })
+      const closeWwwAuth = closeFragment.headers['WWW-Authenticate']
+      const closeIdMatch = closeWwwAuth.match(/id="([^"]+)"/)!
+      const closeRequestMatch = closeWwwAuth.match(/request="([^"]+)"/)!
+      const closeExpiresMatch = closeWwwAuth.match(/expires="([^"]+)"/)!
+
+      const closeCredential: IETFCredential = {
+        challenge: {
+          id: closeIdMatch[1],
+          realm: REALM,
+          method: 'lightning',
+          intent: 'session',
+          request: closeRequestMatch[1],
+          expires: closeExpiresMatch[1],
+        },
+        payload: {
+          action: 'close',
+          sessionToken: bearerToken,
+        } satisfies SessionClosePayload,
+      }
+
+      // Should not throw — close succeeds even though refund fails
+      const closeResult = await rail.verify(makeRequest(encodeCredential(closeCredential)))
+      expect(closeResult.authenticated).toBe(true)
+      expect(closeResult.customCaveats?.['X-Session-Closed']).toBe('true')
+      // No refund preimage since sendPayment failed
+      expect(closeResult.customCaveats?.['X-Refund-Preimage']).toBeUndefined()
+    })
+
+    it('accepts top-up with same preimage as deposit (different challenge)', async () => {
+      const rail = createRail()
+      const { result } = await openSession(rail)
+      const bearerToken = result.customCaveats!['X-Session-Token']
+
+      // Get a new challenge for the top-up
+      const topupFragment = await rail.challenge('/api/test', { sats: 200 })
+      const topupWwwAuth = topupFragment.headers['WWW-Authenticate']
+      const topupIdMatch = topupWwwAuth.match(/id="([^"]+)"/)!
+      const topupRequestMatch = topupWwwAuth.match(/request="([^"]+)"/)!
+      const topupExpiresMatch = topupWwwAuth.match(/expires="([^"]+)"/)!
+
+      const topupSessionRequest: SessionChallengeRequest = JSON.parse(
+        Buffer.from(topupRequestMatch[1], 'base64url').toString()
+      )
+      const topupEntry = invoiceMap.get(topupSessionRequest.deposit.paymentHash)!
+
+      const topupCredential: IETFCredential = {
+        challenge: {
+          id: topupIdMatch[1],
+          realm: REALM,
+          method: 'lightning',
+          intent: 'session',
+          request: topupRequestMatch[1],
+          expires: topupExpiresMatch[1],
+        },
+        payload: {
+          action: 'topup',
+          sessionToken: bearerToken,
+          preimage: topupEntry.preimage,
+        } satisfies SessionTopUpPayload,
+      }
+
+      const topupResult = await rail.verify(makeRequest(encodeCredential(topupCredential)))
+      expect(topupResult.authenticated).toBe(true)
+      // Original deposit was 500, top-up is 200
+      expect(topupResult.creditBalance).toBe(700)
+    })
+
     it('rejects bearer token after close', async () => {
       const rail = createRail()
       const { result, sessionRequest } = await openSession(rail)
@@ -504,6 +731,142 @@ describe('IETF Session Rail', () => {
       }
 
       const result = await rail.verify(makeRequest(encodeCredential(credential)))
+      expect(result.authenticated).toBe(false)
+    })
+
+    it('rejects duplicate session open (replay of same deposit preimage)', async () => {
+      const rail = createRail()
+      const fragment = await rail.challenge('/api/test', { sats: 500 })
+      const wwwAuth = fragment.headers['WWW-Authenticate']
+      const idMatch = wwwAuth.match(/id="([^"]+)"/)!
+      const requestMatch = wwwAuth.match(/request="([^"]+)"/)!
+      const expiresMatch = wwwAuth.match(/expires="([^"]+)"/)!
+
+      const sessionRequest: SessionChallengeRequest = JSON.parse(
+        Buffer.from(requestMatch[1], 'base64url').toString()
+      )
+      const entry = invoiceMap.get(sessionRequest.deposit.paymentHash)!
+
+      const credential: IETFCredential = {
+        challenge: {
+          id: idMatch[1],
+          realm: REALM,
+          method: 'lightning',
+          intent: 'session',
+          request: requestMatch[1],
+          expires: expiresMatch[1],
+        },
+        payload: { action: 'open', preimage: entry.preimage } satisfies SessionOpenPayload,
+      }
+
+      // First open succeeds
+      const first = await rail.verify(makeRequest(encodeCredential(credential)))
+      expect(first.authenticated).toBe(true)
+
+      // Replay of same credential should fail (session already exists)
+      const second = await rail.verify(makeRequest(encodeCredential(credential)))
+      expect(second.authenticated).toBe(false)
+    })
+
+    it('rejects expired challenge on open', async () => {
+      const rail = createRail()
+      const fragment = await rail.challenge('/api/test', { sats: 500 })
+      const wwwAuth = fragment.headers['WWW-Authenticate']
+      const requestMatch = wwwAuth.match(/request="([^"]+)"/)!
+
+      const sessionRequest: SessionChallengeRequest = JSON.parse(
+        Buffer.from(requestMatch[1], 'base64url').toString()
+      )
+      const entry = invoiceMap.get(sessionRequest.deposit.paymentHash)!
+
+      // Build credential with an expires in the past and a valid HMAC
+      const pastExpires = new Date(Date.now() - 60_000).toISOString()
+      const params: IETFChallengeParams = {
+        realm: REALM,
+        method: 'lightning',
+        intent: 'session',
+        request: requestMatch[1],
+        expires: pastExpires,
+      }
+      const id = computeChallengeId(HMAC_SECRET, params)
+
+      const credential: IETFCredential = {
+        challenge: {
+          id,
+          realm: REALM,
+          method: 'lightning',
+          intent: 'session',
+          request: requestMatch[1],
+          expires: pastExpires,
+        },
+        payload: { action: 'open', preimage: entry.preimage } satisfies SessionOpenPayload,
+      }
+
+      const result = await rail.verify(makeRequest(encodeCredential(credential)))
+      expect(result.authenticated).toBe(false)
+    })
+
+    it('rejects bearer auth on expired session', async () => {
+      const shortConfig: SessionConfig = {
+        maxSessionDurationMs: 1, // Expires immediately
+        maxDepositSats: 10_000,
+      }
+      const rail = createIETFSessionRail({
+        hmacSecret: HMAC_SECRET,
+        realm: REALM,
+        backend,
+        storage,
+        session: shortConfig,
+      })
+
+      // Open a session
+      const fragment = await rail.challenge('/api/test', { sats: 500 })
+      const wwwAuth = fragment.headers['WWW-Authenticate']
+      const idMatch = wwwAuth.match(/id="([^"]+)"/)!
+      const requestMatch = wwwAuth.match(/request="([^"]+)"/)!
+      const expiresMatch = wwwAuth.match(/expires="([^"]+)"/)!
+
+      const sessionRequest: SessionChallengeRequest = JSON.parse(
+        Buffer.from(requestMatch[1], 'base64url').toString()
+      )
+      const entry = invoiceMap.get(sessionRequest.deposit.paymentHash)!
+
+      const credential: IETFCredential = {
+        challenge: {
+          id: idMatch[1],
+          realm: REALM,
+          method: 'lightning',
+          intent: 'session',
+          request: requestMatch[1],
+          expires: expiresMatch[1],
+        },
+        payload: {
+          action: 'open',
+          preimage: entry.preimage,
+        } satisfies SessionOpenPayload,
+      }
+
+      const openResult = await rail.verify(makeRequest(encodeCredential(credential)))
+      expect(openResult.authenticated).toBe(true)
+      const bearerToken = openResult.customCaveats!['X-Session-Token']
+
+      // Wait for session to expire
+      await new Promise((r) => setTimeout(r, 10))
+
+      // Bearer auth should now be rejected
+      const bearerCredential: IETFCredential = {
+        challenge: { id: '', realm: '', method: '', intent: '', request: '' },
+        payload: { action: 'bearer', sessionToken: bearerToken } satisfies SessionBearerPayload,
+      }
+      const bearerResult = await rail.verify(makeRequest(encodeCredential(bearerCredential)))
+      expect(bearerResult.authenticated).toBe(false)
+    })
+
+    it('returns unauthenticated for malformed base64url in Authorization header', async () => {
+      const rail = createRail()
+      // Not valid base64url — contains characters that will produce invalid JSON
+      const malformedAuth = 'Payment !!!not-valid-base64url@@@'
+      const result = await rail.verify(makeRequest(malformedAuth))
       expect(result.authenticated).toBe(false)
     })
 

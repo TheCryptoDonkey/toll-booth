@@ -215,8 +215,12 @@ export function memoryStorage(): StorageBackend {
     },
 
     getSessionByBearer(bearerToken: string): Session | null {
+      const providedBuf = Buffer.from(bearerToken)
       for (const session of sessions.values()) {
-        if (session.bearerToken === bearerToken) return session
+        const storedBuf = Buffer.from(session.bearerToken)
+        if (storedBuf.length === providedBuf.length && timingSafeEqual(storedBuf, providedBuf)) {
+          return session
+        }
       }
       return null
     },
@@ -233,6 +237,7 @@ export function memoryStorage(): StorageBackend {
       const session = sessions.get(sessionId)
       if (!session || session.closedAt !== null) throw new Error(`Session not found or closed: ${sessionId}`)
       session.balanceSats += amount
+      session.depositSats += amount
       return { newBalance: session.balanceSats }
     },
 

@@ -338,7 +338,7 @@ export function sqliteStorage(config?: SqliteStorageConfig): StorageBackend {
   )
 
   const stmtTopUpSession = db.prepare(
-    'UPDATE sessions SET balance_sats = balance_sats + ? WHERE session_id = ? AND closed_at IS NULL'
+    'UPDATE sessions SET balance_sats = balance_sats + ?, deposit_sats = deposit_sats + ? WHERE session_id = ? AND closed_at IS NULL'
   )
 
   const stmtCloseSession = db.prepare(
@@ -383,7 +383,7 @@ export function sqliteStorage(config?: SqliteStorageConfig): StorageBackend {
   const txnTopUpSession = db.transaction((sessionId: string, amount: number): { newBalance: number } => {
     const row = stmtGetSessionBalance.get(sessionId) as { balance_sats: number } | undefined
     if (!row) throw new Error(`Session not found or closed: ${sessionId}`)
-    stmtTopUpSession.run(amount, sessionId)
+    stmtTopUpSession.run(amount, amount, sessionId)
     return { newBalance: row.balance_sats + amount }
   })
 
