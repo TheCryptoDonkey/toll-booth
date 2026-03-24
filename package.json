@@ -42,7 +42,10 @@
     "url": "git+https://github.com/forgesworn/toll-booth.git"
   },
   "homepage": "https://github.com/forgesworn/toll-booth#readme",
-  "funding": "https://github.com/forgesworn/toll-booth#support",
+  "funding": {
+    "type": "lightning",
+    "url": "lightning:thedonkey@strike.me"
+  },
   "bin": {
     "toll-booth": "dist/cli.js"
   },
