@@ -1,3 +1,10 @@
+## [4.4.2](https://github.com/forgesworn/toll-booth/compare/v4.4.1...v4.4.2) (2026-03-24)
+
+
+### Bug Fixes
+
+* update sats-for-laughs paymentMethods to 402-announce v2 format ([81dcbb0](https://github.com/forgesworn/toll-booth/commit/81dcbb00f191f140dbcf5467732fe28d30104015))
+
 ## [4.4.1](https://github.com/forgesworn/toll-booth/compare/v4.4.0...v4.4.1) (2026-03-24)
 
 
