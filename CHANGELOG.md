@@ -1,3 +1,18 @@
+# [4.3.0](https://github.com/forgesworn/toll-booth/compare/v4.2.1...v4.3.0) (2026-03-24)
+
+
+### Bug Fixes
+
+* NWC backend field name and unused variable warnings ([492bb46](https://github.com/forgesworn/toll-booth/commit/492bb46d7cbae677fc0dd1925bd84557c3c52a90))
+
+
+### Features
+
+* add init command to CLI router ([57581f2](https://github.com/forgesworn/toll-booth/commit/57581f27998defa6155a7084bae0828154d9ca99))
+* golden-path project templates for init command ([c794035](https://github.com/forgesworn/toll-booth/commit/c79403544f61151aa8375c92e48115dbccd199ce))
+* interactive prompt flow for init command ([6a88374](https://github.com/forgesworn/toll-booth/commit/6a88374e9254981e1bae28b7a3b83a9c9e17ffa3))
+* wire init command end-to-end ([9794509](https://github.com/forgesworn/toll-booth/commit/97945097235e7229d28a68ac3a9f487934390538))
+
 ## [4.2.1](https://github.com/forgesworn/toll-booth/compare/v4.2.0...v4.2.1) (2026-03-24)
 
 
