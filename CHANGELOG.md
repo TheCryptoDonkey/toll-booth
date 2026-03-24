@@ -1,3 +1,19 @@
+# [4.4.0](https://github.com/forgesworn/toll-booth/compare/v4.3.0...v4.4.0) (2026-03-24)
+
+
+### Bug Fixes
+
+* address security audit findings (CRITICAL + HIGH + MEDIUM) ([bc94c21](https://github.com/forgesworn/toll-booth/commit/bc94c211dae72eb31d5e7192380e5de5ea2b030f))
+* remaining MEDIUM security fixes + adversarial test coverage ([c45792e](https://github.com/forgesworn/toll-booth/commit/c45792e88228107c5994557644479c95ebd685ac))
+
+
+### Features
+
+* add IETF Payment session rail with compliance guardrails ([73f3597](https://github.com/forgesworn/toll-booth/commit/73f3597f7886c9b5183b7356267488a9d7bdaf51))
+* add PaymentSender interface and session storage ([e1fa026](https://github.com/forgesworn/toll-booth/commit/e1fa026a237cd4234652827237035d390b53c7d7))
+* IETF Payment session intent ([#5](https://github.com/forgesworn/toll-booth/issues/5)) ([8d770fa](https://github.com/forgesworn/toll-booth/commit/8d770faffc92673c9ef1fdbfe91463b8bee383b8))
+* integrate session rail into TollBoothEngine ([ab65a6d](https://github.com/forgesworn/toll-booth/commit/ab65a6d8759c8ae0353357ece23d673879ad4e92))
+
 # [4.3.0](https://github.com/forgesworn/toll-booth/compare/v4.2.1...v4.3.0) (2026-03-24)
 
 
