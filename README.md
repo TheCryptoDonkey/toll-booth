@@ -114,6 +114,8 @@ curl -H "Authorization: L402 <macaroon>:<preimage>" https://jokes.trotters.dev/a
 - **L402 protocol** - industry-standard HTTP 402 payment flow with macaroon credentials
 - **Multiple Lightning backends** - Phoenixd, LND, CLN, LNbits, NWC (any Nostr Wallet Connect wallet)
 - **Alternative payment methods** - Cashu ecash tokens and xcashu (NUT-24) direct-header payments
+- **IETF Payment authentication** - implements [draft-ryan-httpauth-payment-01](https://datatracker.ietf.org/doc/draft-ryan-httpauth-payment/), the emerging standard for HTTP payment authentication. HMAC-bound stateless challenges with Lightning settlement.
+- **x402 stablecoin payments** - accepts [x402](https://x402.org) on-chain stablecoin payments (USDC on Base, Polygon) alongside Lightning and Cashu simultaneously
 - **Cashu-only mode** - no Lightning node required; ideal for serverless and edge deployments
 - **Credit system** - pre-paid balance with volume discount tiers
 - **Free tier** - configurable daily allowance (IP-hashed, no PII stored)
@@ -264,6 +266,23 @@ Clients pay by sending `X-Cashu: cashuB...` tokens in the request header. Proofs
 
 Unlike the `redeemCashu` callback (which integrates Cashu into the L402 payment-and-redeem flow), `xcashu` is a self-contained payment rail: the client attaches a token directly to the API request and gets access in one step — no separate redeem endpoint required. Both rails can run simultaneously; the 402 challenge will include both `WWW-Authenticate` (L402) and `X-Cashu` headers.
 
+### IETF Payment (draft-ryan-httpauth-payment-01)
+
+```typescript
+const booth = new Booth({
+  adapter: 'express',
+  backend: phoenixdBackend({ url: '...', password: '...' }),
+  ietfPayment: {
+    realm: 'api.example.com',
+    // hmacSecret auto-derived from rootKey if omitted
+  },
+  pricing: { '/api': 10 },
+  upstream: 'http://localhost:8080',
+})
+```
+
+Implements the [IETF Payment authentication scheme](https://datatracker.ietf.org/doc/draft-ryan-httpauth-payment/) - the emerging standard for HTTP payment authentication. Challenges are stateless (HMAC-SHA256 bound, no database lookup on verify), with JCS-encoded charge requests and timing-safe validation. The 402 response includes a `WWW-Authenticate: Payment` header alongside the L402 challenge, so clients can use whichever scheme they support.
+
 ---
 
 ## Lightning backends
@@ -296,19 +315,39 @@ Each backend implements the `LightningBackend` interface (`createInvoice` + `che
 |---|---|---|
 | **Language** | Go binary | TypeScript middleware |
 | **Deployment** | Standalone reverse proxy | Embeds in your app, or runs as a gateway in front of any HTTP service |
-| **Lightning node** | Requires LND | Phoenixd, LND, CLN, LNbits, or none (Cashu-only) |
+| **Lightning node** | Requires LND | Phoenixd, LND, CLN, LNbits, NWC, or none (Cashu-only) |
+| **Payment rails** | Lightning only | Lightning, Cashu ecash, xcashu (NUT-24), x402 stablecoins, IETF Payment - simultaneously |
+| **IETF Payment** | No | Yes - [draft-ryan-httpauth-payment-01](https://datatracker.ietf.org/doc/draft-ryan-httpauth-payment/) with stateless HMAC challenges |
+| **x402 stablecoins** | No | Yes - USDC on Base, Polygon via pluggable facilitator |
+| **Cashu ecash** | No | Yes - redeemCashu callback + xcashu (NUT-24) direct-header rail |
+| **Credit system** | No | Pre-paid balance with volume discount tiers |
+| **Framework adapters** | N/A (standalone proxy) | Express, Web Standard (Deno/Bun/Workers), Hono |
 | **Serverless** | No - long-running process | Yes - Web Standard adapter runs on Cloudflare Workers, Deno, Bun |
 | **Configuration** | YAML file | Programmatic (code) |
 
 ---
 
-## What about x402?
+## x402 stablecoin payments
 
-[x402](https://x402.org) is Coinbase's HTTP 402 payment protocol for on-chain stablecoins. Great — the more protocols normalising HTTP 402 as a payment primitive, the better for everyone.
+[x402](https://x402.org) is Coinbase's HTTP 402 payment protocol for on-chain stablecoins. toll-booth speaks it natively. A single deployment accepts Lightning **and** x402 stablecoins **and** Cashu — simultaneously. The seller doesn't care how they get paid. They just want paid.
 
-toll-booth is **payment-rail agnostic**. It already supports Lightning (five backends), Cashu ecash, and Nostr Wallet Connect. x402 is on the roadmap as another pluggable backend. When it lands, a single toll-booth deployment will accept Lightning **and** x402 stablecoins **and** Cashu — simultaneously. The seller doesn't care how they get paid. They just want paid.
+```typescript
+const booth = new Booth({
+  adapter: 'express',
+  backend: phoenixdBackend({ url: '...', password: '...' }),
+  x402: {
+    receiverAddress: '0x1234...abcd',
+    network: 'base',
+    facilitator: myFacilitator, // verifies on-chain settlement
+  },
+  pricing: { '/api': { sats: 10, usd: 5 } }, // price in both currencies
+  upstream: 'http://localhost:8080',
+})
+```
 
-The unique value of toll-booth isn't any single payment rail. It's the **middleware layer**: gating, credit accounting, free tiers, volume discounts, upstream proxying, and macaroon credentials — all framework-agnostic, all runtime-agnostic, all payment-rail agnostic. Payment protocols are pluggable backends. toll-booth is the booth.
+The 402 challenge includes both `WWW-Authenticate` (L402) and `Payment-Required` (x402) headers. Clients choose their preferred rail. x402 payments settle into the same credit system as Lightning — volume discount tiers apply regardless of payment method.
+
+The unique value of toll-booth isn't any single payment rail. It's the **middleware layer**: gating, credit accounting, free tiers, volume discounts, upstream proxying, and macaroon credentials — all framework-agnostic, all runtime-agnostic, all payment-rail agnostic. Payment protocols are pluggable rails. toll-booth is the booth.
 
 ---
 
