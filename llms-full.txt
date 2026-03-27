@@ -74,6 +74,8 @@ interface BoothOptions extends BoothConfig {
 }
 ```
 
+For Hono, do not use the `Booth` class. Use `createHonoTollBooth()` from `@forgesworn/toll-booth/hono` instead (see Hono example below).
+
 ### BoothConfig
 
 ```typescript
@@ -485,6 +487,61 @@ Bun.serve({
   },
 })
 ```
+
+### Hono
+
+```typescript
+import { Hono } from 'hono'
+import { createTollBooth } from '@forgesworn/toll-booth'
+import { createHonoTollBooth } from '@forgesworn/toll-booth/hono'
+import type { TollBoothEnv } from '@forgesworn/toll-booth/hono'
+import { phoenixdBackend } from '@forgesworn/toll-booth/backends/phoenixd'
+import { sqliteStorage } from '@forgesworn/toll-booth/storage/sqlite'
+
+const backend = phoenixdBackend({
+  url: process.env.PHOENIXD_URL!,
+  password: process.env.PHOENIXD_PASSWORD!,
+})
+
+const storage = sqliteStorage({ path: './toll-booth.db' })
+const rootKey = process.env.ROOT_KEY!
+
+const engine = createTollBooth({
+  pricing: { '/api': 10 },
+  backend,
+  storage,
+  rootKey,
+  freeTier: { requestsPerDay: 5 },
+})
+
+const { authMiddleware, createPaymentApp } = createHonoTollBooth({
+  engine,
+  trustProxy: true,
+})
+
+const paymentApp = createPaymentApp({
+  storage,
+  rootKey,
+  backend,
+  tiers: [
+    { amountSats: 1000, creditSats: 1000, label: 'Standard' },
+    { amountSats: 5000, creditSats: 5500, label: 'Pro (10% bonus)' },
+  ],
+  defaultAmount: 1000,
+})
+
+const app = new Hono<TollBoothEnv>()
+app.route('/pay', paymentApp)      // payment routes: /pay/create-invoice, /pay/invoice-status/:paymentHash
+app.use('/*', authMiddleware)       // auth middleware on all other routes
+app.get('/api/data', (c) => {
+  const balance = c.get('tollBoothCreditBalance')
+  return c.json({ data: 'your response', creditBalance: balance })
+})
+
+export default app
+```
+
+The Hono adapter provides `createHonoTollBooth()` which returns an `authMiddleware` and a `createPaymentApp()` factory. The payment app is a Hono sub-app with `/create-invoice`, `/invoice-status/:paymentHash`, and optional `/nwc-pay` and `/cashu-redeem` routes. Context variables (`TollBoothEnv`) expose payment state to downstream handlers via `c.get()`.
 
 ### Custom LightningBackend
 

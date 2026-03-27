@@ -99,7 +99,8 @@
     "dist",
     "!dist/**/*.map",
     "!dist/**/*.d.ts.map",
-    "llms.txt"
+    "llms.txt",
+    "llms-full.txt"
   ],
   "scripts": {
     "build": "rm -rf dist && tsc",
