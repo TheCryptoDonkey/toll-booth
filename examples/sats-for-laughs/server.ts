@@ -1,5 +1,5 @@
 import { randomBytes, createHash } from 'node:crypto'
-import { readFileSync, mkdirSync, writeFileSync } from 'node:fs'
+import { readFileSync, mkdirSync, writeFileSync, existsSync } from 'node:fs'
 import { resolve, dirname, join } from 'node:path'
 import { homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
@@ -83,6 +83,28 @@ app.use(express.json())
 // Serve web frontend (before toll-booth middleware so / is not gated)
 app.use(express.static(resolve(__dirname, 'public')))
 
+// Serve build provenance attestation if available (written by CI/CD attest step)
+const attestationFile = join(process.env.DATA_DIR ?? '/data', 'attestation-event-id')
+const attestationEventId = existsSync(attestationFile)
+  ? readFileSync(attestationFile, 'utf-8').trim()
+  : undefined
+
+if (attestationEventId) {
+  app.use((_req, res, next) => {
+    res.setHeader('X-Nostr-Attestation', attestationEventId)
+    next()
+  })
+
+  app.get('/.well-known/nostr-attestation.json', (_req, res) => {
+    res.setHeader('Cache-Control', 'public, max-age=3600')
+    res.json({
+      pattern: 'direct',
+      event_id: attestationEventId,
+      relays: ['wss://relay.damus.io', 'wss://nos.lol'],
+    })
+  })
+}
+
 const mockStorage = MOCK ? memoryStorage() : undefined
 const backend = MOCK
   ? createMockBackend(mockStorage!)
@@ -140,6 +162,9 @@ app.listen(port, async () => {
   console.log(`  jokes loaded: ${jokes.length}`)
   console.log(`  quality: ${qualityCounts.cracker} cracker, ${qualityCounts.standard} standard, ${qualityCounts.premium} premium`)
   console.log(`  pricing: 5/21/42 sats (cracker/standard/premium), 3 free/day`)
+  if (attestationEventId) {
+    console.log(`  attestation: ${attestationEventId.slice(0, 12)}...`)
+  }
 
   // Announce on Nostr relays for decentralised discovery
   const jokeOutputSchema = {
