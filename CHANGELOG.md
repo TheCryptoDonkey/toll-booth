@@ -1,3 +1,10 @@
+# [4.5.0](https://github.com/forgesworn/toll-booth/compare/v4.4.2...v4.5.0) (2026-03-28)
+
+
+### Features
+
+* **sats-for-laughs:** add NIP-VA attestation header and well-known endpoint ([b0567c8](https://github.com/forgesworn/toll-booth/commit/b0567c8976ad9ede45e4d74ee6c9f04d2c3dc1b6))
+
 ## [4.4.2](https://github.com/forgesworn/toll-booth/compare/v4.4.1...v4.4.2) (2026-03-24)
 
 
