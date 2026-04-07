@@ -1,12 +1,4 @@
 {
   "url": "https://context7.com/forgesworn/toll-booth",
-  "public_key": "pk_vdoXns3QEblb1693KnlDH",
-  "projectTitle": "toll-booth",
-  "description": "L402 middleware for Node.js — gate any Express, Hono, Deno, or Bun API behind Lightning, Cashu, or Stripe payments.",
-  "excludeFolders": ["node_modules", "dist", "coverage", "src", "test", "tests", ".github", ".changeset"],
-  "rules": [
-    "toll-booth is payment-rail agnostic — configure Lightning (LND, CLN, Phoenixd), Cashu, NWC, or Stripe via payment providers.",
-    "Use the Express middleware for quickest integration: app.use(tollBooth(config)).",
-    "Pricing is defined per-route with support for metered, subscription, and one-time payment models."
-  ]
+  "public_key": "pk_vdoXns3QEblb1693KnlDH"
 }
