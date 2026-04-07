@@ -1,3 +1,10 @@
+## [4.5.1](https://github.com/forgesworn/toll-booth/compare/v4.5.0...v4.5.1) (2026-04-07)
+
+
+### Bug Fixes
+
+* strip context7.json to claim-only fields ([5cf0be1](https://github.com/forgesworn/toll-booth/commit/5cf0be18d8484b5ce84ba32f5479854f4f88d92c))
+
 # [4.5.0](https://github.com/forgesworn/toll-booth/compare/v4.4.2...v4.5.0) (2026-03-28)
 
 
