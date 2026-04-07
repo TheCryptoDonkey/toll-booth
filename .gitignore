@@ -15,3 +15,6 @@ docs/superpowers/
 .superpowers/
 .playwright-mcp/
 examples/sats-for-laughs/package-lock.json
+
+# Local AI agent settings
+.claude/
