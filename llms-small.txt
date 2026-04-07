@@ -34,7 +34,7 @@ Scaffold a project: `npx @forgesworn/toll-booth init`
 ## Key Facts
 
 - Multi-rail: L402, x402 stablecoins, Cashu ecash, IETF Payment - all simultaneously
-- Adapters: `'express'`, `'web-standard'` (Deno/Bun/Workers), `'hono'`
+- Adapters: `'express'`, `'web-standard'` (Deno/Bun/Workers); Hono: use `createHonoTollBooth()` from `@forgesworn/toll-booth/hono`
 - Backends: Phoenixd, LND, CLN, LNbits, NWC; or Cashu-only (no Lightning node)
 - Self-hosted: operators run their own infrastructure, receive their own payments
 - Credit system with volume discount tiers
