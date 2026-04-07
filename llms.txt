@@ -67,6 +67,107 @@ const booth = new Booth({
 - **Payment rails** — pluggable payment rail abstraction (`PaymentRail` interface). Built-in rails: `createL402Rail()` for Lightning/macaroon auth, `createX402Rail()` for on-chain stablecoin payments, and IETF Payment for standards-track HTTP payment authentication. Multiple rails can run simultaneously on the same deployment.
 - **IETF Payment** — implements draft-ryan-httpauth-payment-01, the emerging standard for HTTP-native payment authentication. HMAC-bound stateless challenges (no server state needed), Lightning settlement via any supported backend, and `Payment-Receipt` response header on successful auth. Enable with `ietfPayment: { realm: 'api.example.com' }` in Booth config.
 - **Adapters** — `'express'` for Express 4/5, `'web-standard'` for Deno, Bun, and Cloudflare Workers, `'hono'` for Hono. For Hono, use `createHonoTollBooth()` directly for idiomatic integration (auth middleware + payment route sub-app).
+- **Event hooks** — three optional callbacks for observing the payment lifecycle: `onPayment` (fires once per payment hash on first successful auth; receives `{ timestamp, paymentHash, amountSats, currency, rail }`), `onRequest` (fires on every authenticated or free-tier request; receives `{ timestamp, endpoint, satsDeducted, remainingBalance, latencyMs, authenticated, currency, tier }`), and `onChallenge` (fires when a 402 challenge is issued; receives `{ timestamp, endpoint, amountSats }`). Pass them in the Booth config or engine config. Use for logging, analytics, webhook dispatch, or metrics.
+- **Selective route gating** — only routes listed in the `pricing` map are gated. Unpriced routes pass through free by default (`strictPricing: false`). Enable `strictPricing: true` to gate all routes at `defaultInvoiceAmount`. You can also mount the middleware on a specific Express path prefix (e.g. `app.use('/api/paid', booth.middleware)`) to scope gating to a subset of routes.
+- **Custom macaroon caveats** — the `/create-invoice` endpoint accepts a `caveats` array of `"key = value"` strings (up to 16 caveats, max 1024 chars each). Built-in caveats verified by toll-booth: `route` (path restriction with wildcards), `expires` (ISO 8601 expiry), `ip` (client IP binding). Custom caveats (any non-reserved key) are parsed and forwarded to your upstream as `X-Toll-Caveat-{Key}: value` headers. Your upstream enforces them. Example: `caveats: ["model = llama3", "tier = premium"]` results in headers `X-Toll-Caveat-Model: llama3` and `X-Toll-Caveat-Tier: premium`.
+- **Payment state in handlers** — after successful auth, Hono handlers access payment details via typed context variables: `c.get('tollBoothCreditBalance')`, `c.get('tollBoothPaymentHash')`, `c.get('tollBoothEstimatedCost')`, `c.get('tollBoothFreeRemaining')`, `c.get('tollBoothTier')`, `c.get('tollBoothAction')`. Express and Web Standard adapters add `X-Credit-Balance` and `X-Free-Remaining` headers to the client response, and forward `X-Credit-Balance` plus `X-Toll-Caveat-*` headers to the upstream service.
+
+## Event Hooks Example
+
+```typescript
+const booth = new Booth({
+  adapter: 'express',
+  backend: phoenixdBackend({ url: '...', password: '...' }),
+  pricing: { '/api': 10 },
+  upstream: 'http://localhost:8080',
+  onPayment: (event) => {
+    console.log(`Payment: ${event.amountSats} sats via ${event.rail} (${event.paymentHash})`)
+  },
+  onRequest: (event) => {
+    console.log(`${event.endpoint} -${event.satsDeducted} sats, ${event.remainingBalance} remaining`)
+  },
+  onChallenge: (event) => {
+    console.log(`Challenged ${event.endpoint} for ${event.amountSats} sats`)
+  },
+})
+```
+
+## Selective Route Gating Example
+
+```typescript
+// Only /api/premium and /api/generate are gated; all other routes pass free
+const booth = new Booth({
+  adapter: 'express',
+  backend: phoenixdBackend({ url: '...', password: '...' }),
+  pricing: {
+    '/api/premium': 100,
+    '/api/generate': 50,
+  },
+  upstream: 'http://localhost:8080',
+})
+
+app.use('/', booth.middleware as express.RequestHandler)
+// /api/premium -> 402 challenge (100 sats)
+// /api/generate -> 402 challenge (50 sats)
+// /api/search, /health, /docs -> pass through free
+
+// Alternative: mount middleware on a specific prefix
+app.use('/api/paid', booth.middleware as express.RequestHandler)
+app.get('/api/free', (req, res) => res.json({ free: true }))  // unaffected
+
+// Or gate everything with strictPricing
+const strictBooth = new Booth({
+  ...config,
+  strictPricing: true,           // all routes gated at defaultInvoiceAmount
+  defaultInvoiceAmount: 10,
+  pricing: { '/health': 0 },    // explicitly free
+})
+```
+
+## Custom Macaroon Caveats Example
+
+```bash
+# Request an invoice with custom caveats
+curl -X POST https://api.example.com/create-invoice \
+  -H 'Content-Type: application/json' \
+  -d '{"amountSats": 1000, "caveats": ["model = llama3", "tier = premium"]}'
+```
+
+When the client authenticates, toll-booth forwards custom caveats to your upstream as headers:
+- `X-Toll-Caveat-Model: llama3`
+- `X-Toll-Caveat-Tier: premium`
+
+Built-in caveats (verified automatically by toll-booth):
+- `route = /api/*` — restrict macaroon to specific paths (supports wildcards)
+- `expires = 2026-06-01T00:00:00Z` — time-limited access
+- `ip = 203.0.113.1` — bind to a specific client IP
+
+## Accessing Payment State Example
+
+### Hono
+
+```typescript
+const app = new Hono<TollBoothEnv>()
+app.use('/api/*', tollBooth.authMiddleware)
+app.get('/api/resource', (c) => {
+  const balance = c.get('tollBoothCreditBalance')   // remaining credits (sats)
+  const hash = c.get('tollBoothPaymentHash')         // payment hash (if just paid)
+  const cost = c.get('tollBoothEstimatedCost')        // cost of this request (sats)
+  const free = c.get('tollBoothFreeRemaining')        // free-tier requests left
+  const tier = c.get('tollBoothTier')                 // credit tier name
+  return c.json({ message: 'Paid content', balance, tier })
+})
+```
+
+### Express / Web Standard (client-side)
+
+```typescript
+const res = await fetch('https://api.example.com/api/resource', {
+  headers: { Authorization: `L402 ${macaroon}:${preimage}` },
+})
+const balance = Number(res.headers.get('X-Credit-Balance'))  // remaining credits
+const freeLeft = Number(res.headers.get('X-Free-Remaining')) // free-tier (if applicable)
+```
 
 ## API Surface
 

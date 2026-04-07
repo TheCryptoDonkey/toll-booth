@@ -461,6 +461,179 @@ sequenceDiagram
 
 ---
 
+## Event hooks
+
+Three optional callbacks let you observe the payment lifecycle without modifying the core flow:
+
+```typescript
+const booth = new Booth({
+  adapter: 'express',
+  backend: phoenixdBackend({ url: '...', password: '...' }),
+  pricing: { '/api': 10 },
+  upstream: 'http://localhost:8080',
+
+  // Fired once per payment hash on first successful authentication
+  onPayment: (event) => {
+    console.log(`Received ${event.amountSats} sats via ${event.rail} (${event.paymentHash})`)
+    // event: { timestamp, paymentHash, amountSats, currency, rail }
+  },
+
+  // Fired on every authenticated or free-tier request
+  onRequest: (event) => {
+    console.log(`${event.endpoint} -${event.satsDeducted} sats, ${event.remainingBalance} remaining`)
+    // event: { timestamp, endpoint, satsDeducted, remainingBalance, latencyMs, authenticated, currency, tier }
+  },
+
+  // Fired when a 402 payment challenge is issued
+  onChallenge: (event) => {
+    console.log(`Challenged ${event.endpoint} for ${event.amountSats} sats`)
+    // event: { timestamp, endpoint, amountSats }
+  },
+})
+```
+
+Use these for logging, analytics, webhook dispatch, or feeding a metrics pipeline. They fire synchronously in the request path, so keep them fast. For Hono, these same callbacks are available in the `createTollBooth()` engine config.
+
+---
+
+## Selective route gating
+
+toll-booth only gates routes that appear in the `pricing` map. Unpriced routes pass through free by default.
+
+```typescript
+const booth = new Booth({
+  adapter: 'express',
+  backend: phoenixdBackend({ url: '...', password: '...' }),
+  pricing: {
+    '/api/premium': 100,    // 100 sats per request
+    '/api/generate': 50,    // 50 sats per request
+  },
+  upstream: 'http://localhost:8080',
+})
+
+app.get('/invoice-status/:paymentHash', booth.invoiceStatusHandler as express.RequestHandler)
+app.post('/create-invoice', booth.createInvoiceHandler as express.RequestHandler)
+app.use('/', booth.middleware as express.RequestHandler)
+
+// /api/premium and /api/generate are gated (402 if no credits)
+// /api/search, /health, /docs, etc. pass through free
+```
+
+Alternatively, mount the middleware on a specific path prefix so it only runs for a subset of routes:
+
+```typescript
+// Only requests under /api/paid go through toll-booth
+app.use('/api/paid', booth.middleware as express.RequestHandler)
+
+// These routes are completely unaffected
+app.get('/api/free', (req, res) => res.json({ free: true }))
+app.get('/health', (req, res) => res.json({ ok: true }))
+```
+
+To gate everything by default (opt-out instead of opt-in), enable `strictPricing`. Any route not in the pricing map will receive a 402 challenge at the `defaultInvoiceAmount`:
+
+```typescript
+const booth = new Booth({
+  adapter: 'express',
+  backend: phoenixdBackend({ url: '...', password: '...' }),
+  pricing: { '/health': 0 },    // explicitly free
+  strictPricing: true,           // everything else costs defaultInvoiceAmount
+  defaultInvoiceAmount: 10,
+  upstream: 'http://localhost:8080',
+})
+```
+
+---
+
+## Custom macaroon caveats
+
+Add application-specific restrictions to macaroons via the `/create-invoice` endpoint. Custom caveats are forwarded to your upstream service as `X-Toll-Caveat-*` headers, so your API can enforce them.
+
+```bash
+# Request an invoice with custom caveats
+curl -X POST https://api.example.com/create-invoice \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "amountSats": 1000,
+    "caveats": ["model = llama3", "tier = premium", "expires = 2026-06-01T00:00:00Z"]
+  }'
+```
+
+When the client authenticates with this macaroon, toll-booth parses the caveats and forwards them as headers to your upstream:
+
+```
+X-Toll-Caveat-Model: llama3
+X-Toll-Caveat-Tier: premium
+```
+
+Your upstream API reads these headers to enforce access control:
+
+```typescript
+app.get('/api/generate', (req, res) => {
+  const model = req.headers['x-toll-caveat-model']
+  if (model !== 'llama3') return res.status(403).json({ error: 'Model not authorised' })
+  // proceed with generation...
+})
+```
+
+**Built-in caveats** verified by toll-booth automatically:
+- `route = /api/*` - restrict the macaroon to specific paths (supports wildcards)
+- `expires = 2026-06-01T00:00:00Z` - time-limited access
+- `ip = 203.0.113.1` - bind the macaroon to a specific client IP
+
+**Custom caveats** (any key not in the reserved list) are parsed, propagated as headers, and available for your upstream to enforce. Up to 16 custom caveats per macaroon, max 1024 characters each.
+
+---
+
+## Accessing payment state in handlers
+
+After successful authentication, payment details are available to downstream code.
+
+### Hono - context variables
+
+Hono handlers access payment state via typed context variables:
+
+```typescript
+import { Hono } from 'hono'
+import { createHonoTollBooth, type TollBoothEnv } from '@forgesworn/toll-booth/hono'
+
+const app = new Hono<TollBoothEnv>()
+app.use('/api/*', tollBooth.authMiddleware)
+
+app.get('/api/resource', (c) => {
+  const balance = c.get('tollBoothCreditBalance')    // remaining credits in sats
+  const hash = c.get('tollBoothPaymentHash')          // payment hash (if just paid)
+  const cost = c.get('tollBoothEstimatedCost')         // cost of this request in sats
+  const free = c.get('tollBoothFreeRemaining')         // free-tier requests left
+  const tier = c.get('tollBoothTier')                  // credit tier name
+  const action = c.get('tollBoothAction')              // 'proxy' | 'pass'
+
+  return c.json({ message: 'Paid content', balance, tier })
+})
+```
+
+### Express / Web Standard - response headers
+
+Express and Web Standard adapters add headers to the response returned to the client:
+
+| Header | When | Value |
+|--------|------|-------|
+| `X-Credit-Balance` | After authenticated request | Remaining credit balance in sats |
+| `X-Free-Remaining` | During free-tier request | Free-tier requests remaining today |
+
+```typescript
+// Client-side: read balance from response headers
+const res = await fetch('https://api.example.com/api/resource', {
+  headers: { Authorization: `L402 ${macaroon}:${preimage}` },
+})
+const balance = Number(res.headers.get('X-Credit-Balance'))
+console.log(`Credits remaining: ${balance} sats`)
+```
+
+For upstream services (behind the proxy), toll-booth adds `X-Credit-Balance` and any `X-Toll-Caveat-*` headers to the proxied request, so your backend can read the authenticated user's state.
+
+---
+
 ## Configuration
 
 The five most common options:
