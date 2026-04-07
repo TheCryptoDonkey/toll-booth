@@ -783,7 +783,7 @@ The five most common options:
 
 | Option | Type | Description |
 |--------|------|-------------|
-| `adapter` | `'express' \| 'web-standard' \| 'hono'` | Framework integration to use |
+| `adapter` | `'express' \| 'web-standard'` | Framework integration to use. For Hono, use `createHonoTollBooth()` from `@forgesworn/toll-booth/hono` instead. |
 | `backend` | `LightningBackend` | Lightning node (optional if using Cashu-only) |
 | `pricing` | `Record<string, number>` | Route pattern to cost in sats |
 | `upstream` | `string` | URL to proxy authorised requests to |
@@ -813,6 +813,7 @@ See [docs/configuration.md](docs/configuration.md) for the full reference includ
 |---------|------|
 | **[toll-booth](https://github.com/forgesworn/toll-booth)** | **Payment-rail agnostic HTTP 402 middleware** |
 | [satgate](https://github.com/TheCryptoDonkey/satgate) | Production showcase — pay-per-token AI inference proxy (~400 lines on toll-booth) |
+| [402-announce](https://github.com/forgesworn/402-announce) | Publish your toll-booth services on Nostr (kind 31402) for discovery |
 | [402-mcp](https://github.com/forgesworn/402-mcp) | Client side — AI agents discover, pay, and consume L402 APIs |
 
 ---
