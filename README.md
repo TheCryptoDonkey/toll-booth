@@ -566,22 +566,66 @@ X-Toll-Caveat-Model: llama3
 X-Toll-Caveat-Tier: premium
 ```
 
-Your upstream API reads these headers to enforce access control:
+Your upstream API reads these headers to enforce access control. Here's a complete Express example with validation and error handling:
 
 ```typescript
 app.get('/api/generate', (req, res) => {
-  const model = req.headers['x-toll-caveat-model']
-  if (model !== 'llama3') return res.status(403).json({ error: 'Model not authorised' })
-  // proceed with generation...
+  // Read custom caveats from toll-booth headers
+  const model = req.headers['x-toll-caveat-model'] as string | undefined
+  const tier = req.headers['x-toll-caveat-tier'] as string | undefined
+  const balance = Number(req.headers['x-credit-balance'] ?? 0)
+
+  // Enforce model restriction
+  const allowedModels = ['llama3', 'mistral', 'gemma']
+  if (model && !allowedModels.includes(model)) {
+    return res.status(403).json({ error: `Model "${model}" not authorised for this macaroon` })
+  }
+
+  // Enforce tier restriction
+  if (tier === 'basic' && req.body.stream) {
+    return res.status(403).json({ error: 'Streaming not available on basic tier' })
+  }
+
+  // Use the model caveat to route the request
+  const targetModel = model ?? 'llama3'  // default if no caveat
+  // ... proceed with generation using targetModel
 })
 ```
 
-**Built-in caveats** verified by toll-booth automatically:
-- `route = /api/*` - restrict the macaroon to specific paths (supports wildcards)
-- `expires = 2026-06-01T00:00:00Z` - time-limited access
-- `ip = 203.0.113.1` - bind the macaroon to a specific client IP
+For Hono, custom caveats are available via context variables set by the auth middleware:
 
-**Custom caveats** (any key not in the reserved list) are parsed, propagated as headers, and available for your upstream to enforce. Up to 16 custom caveats per macaroon, max 1024 characters each.
+```typescript
+app.get('/api/generate', (c) => {
+  const balance = c.get('tollBoothCreditBalance')
+  const hash = c.get('tollBoothPaymentHash')
+
+  // Custom caveats are in the proxied request headers
+  const model = c.req.header('x-toll-caveat-model')
+  // ... enforce as needed
+})
+```
+
+### Built-in vs custom caveats
+
+**Built-in caveats** are verified automatically by toll-booth during macaroon verification. The client never reaches your upstream if these fail:
+
+| Caveat | Effect | Example |
+|--------|--------|---------|
+| `route = /api/*` | Restrict the macaroon to specific paths. Supports `/*` prefix matching. | Only allows requests under `/api/` |
+| `expires = 2026-06-01T00:00:00Z` | Time-limited access. Rejected after the timestamp. | 30-day access pass |
+| `ip = 203.0.113.1` | Bind the macaroon to a specific client IP. | Prevent credential sharing |
+
+**Custom caveats** (any key not in the reserved list) are parsed by toll-booth and forwarded to your upstream as `X-Toll-Caveat-*` headers. Your upstream is responsible for enforcing them. Up to 16 custom caveats per macaroon, max 1024 characters each.
+
+**Reserved caveat keys** (`payment_hash`, `credit_balance`, `currency`) cannot be set via the API; they are managed internally by toll-booth.
+
+### Security properties of caveats
+
+Caveats are cryptographically bound to the macaroon's HMAC chain. A client cannot remove or modify existing caveats. However, macaroons allow anyone to *append* additional caveats (which can only narrow permissions, never widen them). toll-booth handles this safely:
+
+- **Duplicate caveats are rejected** during verification
+- **First-occurrence-wins** parsing ensures server-set values take precedence over any appended duplicates
+- **Caveat values are sanitised** (newlines stripped to prevent header injection)
 
 ---
 
@@ -631,6 +675,105 @@ console.log(`Credits remaining: ${balance} sats`)
 ```
 
 For upstream services (behind the proxy), toll-booth adds `X-Credit-Balance` and any `X-Toll-Caveat-*` headers to the proxied request, so your backend can read the authenticated user's state.
+
+---
+
+## Customising the 402 response
+
+When toll-booth issues a 402 challenge, you can control both the HTTP headers and the JSON body.
+
+### Custom HTTP headers
+
+Use `responseHeaders` to add arbitrary headers to every response, including 402 challenges:
+
+```typescript
+const booth = new Booth({
+  adapter: 'express',
+  backend: phoenixdBackend({ url: '...', password: '...' }),
+  pricing: { '/api': 10 },
+  upstream: 'http://localhost:8080',
+  responseHeaders: {
+    'X-Powered-By': 'toll-booth',
+    'Access-Control-Allow-Origin': '*',
+    'X-Custom-Header': 'my-value',
+  },
+})
+```
+
+These headers appear on 402 challenges, proxied responses, and error responses alike.
+
+### Service metadata in the 402 body
+
+Set `serviceName` and `description` to include machine-readable service metadata in the 402 response body:
+
+```typescript
+const booth = new Booth({
+  adapter: 'express',
+  backend: phoenixdBackend({ url: '...', password: '...' }),
+  pricing: { '/api': 10 },
+  upstream: 'http://localhost:8080',
+  serviceName: 'my-api',
+  description: 'Premium data API with real-time market feeds',
+})
+```
+
+The 402 response body will include:
+
+```json
+{
+  "message": "Payment required.",
+  "booth": {
+    "name": "my-api",
+    "description": "Premium data API with real-time market feeds"
+  },
+  "auth_hint": "L402: Pay the invoice, then send — Authorization: L402 <macaroon>:<preimage>",
+  "l402": {
+    "scheme": "L402",
+    "description": "Buy credits — pay once, reuse for multiple requests",
+    "invoice": "lnbc...",
+    "macaroon": "AgE...",
+    "payment_hash": "abc123...",
+    "amount_sats": 10,
+    "payment_url": "/invoice-status/abc123...?token=...",
+    "status_token": "..."
+  }
+}
+```
+
+When multiple payment rails are active (e.g. L402 + x402 + xcashu), the body includes sections for each rail, and `auth_hint` becomes an array of instructions.
+
+### Volume discount tiers in the 402 body
+
+When `creditTiers` are configured, the 402 body includes them so clients can offer volume discounts:
+
+```typescript
+const booth = new Booth({
+  adapter: 'express',
+  backend: phoenixdBackend({ url: '...', password: '...' }),
+  pricing: { '/api': 10 },
+  upstream: 'http://localhost:8080',
+  creditTiers: [
+    { amountSats: 1000, creditSats: 1000, label: '1k sats' },
+    { amountSats: 5000, creditSats: 5550, label: '5k sats (11% bonus)' },
+    { amountSats: 10000, creditSats: 11100, label: '10k sats (11% bonus)' },
+  ],
+})
+```
+
+The 402 body will include a `credit_tiers` array with the tier options.
+
+### Full 402 response structure
+
+| Field | Always present | Description |
+|-------|---------------|-------------|
+| `message` | Yes | `"Payment required."` |
+| `l402` | When L402 rail is active | Invoice, macaroon, payment hash, amount, payment URL |
+| `booth` | When `serviceName` is set | `{ name, description }` service metadata |
+| `auth_hint` | When `serviceName` is set | Human/agent-readable instructions for each active payment rail |
+| `tiers` | For tiered-pricing routes | Available pricing tiers for the requested route |
+| `credit_tiers` | When `creditTiers` is set | Volume discount options |
+
+The `WWW-Authenticate` header follows RFC 9110 and includes credentials for each active rail (e.g. `L402 macaroon="...", invoice="..."` and/or `Payment ...` and/or `X-Cashu ...`).
 
 ---
 

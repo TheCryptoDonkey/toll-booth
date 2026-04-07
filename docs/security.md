@@ -45,16 +45,100 @@ Macaroons support first-party caveats that restrict their use:
 - Caveat values are stripped of newlines to prevent header injection
 - Duplicate custom caveats are rejected
 
-### Preimage verification
+### L402 credential verification
 
-The L402 credential (`Authorization: L402 <macaroon>:<preimage>`) is verified by:
+When a client sends `Authorization: L402 <macaroon>:<preimage>`, toll-booth runs a multi-stage verification pipeline before granting access. Every stage must pass; failure at any point returns a fresh 402 challenge.
 
-1. Deserialising and signature-checking the macaroon against the root key
-2. Extracting the `payment_hash` caveat
-3. Verifying that `SHA256(preimage) === payment_hash`
-4. Checking the credit balance has sufficient funds
+#### Stage 1: Token parsing
 
-The preimage is the proof of payment; without it, a macaroon alone grants no access.
+The Authorization header is split at the last colon to extract the base64-encoded macaroon and the hex preimage:
+
+```typescript
+const auth = req.headers.authorization  // "L402 <base64>:<hex64>"
+const token = auth.replace(/^L402\s+/i, '')
+const lastColon = token.lastIndexOf(':')
+const macaroonBase64 = token.slice(0, lastColon)
+const preimage = token.slice(lastColon + 1)
+```
+
+#### Stage 2: Cryptographic signature verification
+
+The macaroon is deserialised and its HMAC chain is verified against the server's `rootKey`. This confirms the macaroon was minted by this server and has not been tampered with. The `macaroon` library's `m.verify()` walks the caveat chain, checking each HMAC link.
+
+During verification, toll-booth also **rejects duplicate caveats**. Macaroons allow anyone to append caveats (they can only narrow permissions, never widen them), but an attacker could append a duplicate `credit_balance` caveat hoping to override the server-set value. toll-booth tracks caveat keys during verification and rejects any key that appears more than once. Additionally, caveat parsing uses first-occurrence-wins semantics, so server-set caveats (which come first in the chain) always take precedence.
+
+#### Stage 3: L402 identifier cross-check
+
+The macaroon's binary identifier follows the Aperture-compatible version-0 layout:
+
+| Bytes | Content |
+|-------|---------|
+| 0-1 | Version (uint16 big-endian, must be `0`) |
+| 2-33 | Payment hash (32 bytes) |
+| 34-65 | Random token ID (32 bytes) |
+
+The payment hash is extracted from this identifier and cross-checked against the `payment_hash` caveat. Both are covered by the root signature, so a mismatch indicates tampering and fails verification.
+
+#### Stage 4: Built-in caveat enforcement
+
+If the macaroon contains built-in caveats, they are checked against the current request context:
+
+| Caveat | Check | Example |
+|--------|-------|---------|
+| `route = /api/*` | Request path must match the pattern. Supports prefix matching with `/*` wildcard. | `route = /api/v1/*` allows `/api/v1/users` but not `/admin` |
+| `expires = 2026-06-01T00:00:00Z` | Current time must be before the expiry timestamp. | Rejects expired macaroons |
+| `ip = 203.0.113.1` | Client IP must match exactly. | Binds the macaroon to a specific client |
+
+Any failing caveat check returns `{ valid: false }` immediately.
+
+#### Stage 5: Preimage verification (proof of payment)
+
+The preimage proves the client actually paid. toll-booth accepts two forms of proof:
+
+**Lightning preimage:** The standard proof - `SHA256(preimage)` must equal the payment hash. Both values are compared using `crypto.timingSafeEqual` to prevent timing attacks:
+
+```typescript
+const computed = createHash('sha256').update(Buffer.from(preimage, 'hex')).digest()
+timingSafeEqual(computed, Buffer.from(paymentHash, 'hex'))
+```
+
+**Cashu settlement secret:** For Cashu payments, the preimage is compared against the settlement secret stored during Cashu redemption. This also uses timing-safe comparison:
+
+```typescript
+timingSafeEqual(Buffer.from(preimage), Buffer.from(settlementSecret))
+```
+
+If neither check passes, authentication fails. A macaroon alone grants no access; the preimage is the proof of payment.
+
+#### Stage 6: Credit settlement
+
+On first valid presentation of a macaroon+preimage pair, toll-booth credits the balance to storage via `settleWithCredit()`. This is an atomic operation; if two concurrent requests race with the same credential, only one settles credits - the other continues with the existing balance. A random settlement secret is stored (not the raw preimage) to avoid leaking the bearer credential through the invoice-status endpoint.
+
+#### Stage 7: Balance debit
+
+After authentication, the engine debits the route's cost from the credit balance. If the balance is insufficient, the request falls through to a fresh 402 challenge. The remaining balance is returned to the client in the `X-Credit-Balance` response header.
+
+```
+Client sends: Authorization: L402 <macaroon>:<preimage>
+                                    │              │
+                            ┌───────┘              └────────┐
+                            ▼                               ▼
+                   Verify HMAC chain              Verify SHA256(preimage)
+                   against rootKey                equals payment_hash
+                            │                               │
+                            ▼                               ▼
+                   Check caveats                   Settle credits
+                   (route, expires, ip)            (first time only)
+                            │                               │
+                            └───────────┬───────────────────┘
+                                        ▼
+                                  Debit route cost
+                                        │
+                                        ▼
+                              Proxy to upstream API
+```
+
+This entire pipeline runs on every authenticated request. The cryptographic checks (HMAC verification, SHA256 preimage check) are the expensive part; caveat enforcement and balance debit are simple lookups.
 
 ## Payment security
 

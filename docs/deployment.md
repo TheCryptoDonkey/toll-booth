@@ -323,3 +323,72 @@ const booth = new Booth({
 ```
 
 No PII is included in events. See the [security guide](security.md) for details on what data is collected.
+
+---
+
+## Horizontal scaling
+
+Macaroon-based authentication is inherently stateless from a verification perspective. The only secret required to verify any macaroon is the `rootKey`. This makes toll-booth well-suited to horizontal scaling and distributed deployments.
+
+### What is stateless
+
+**Macaroon verification** requires only the `rootKey` (a 32-byte shared secret). Every toll-booth instance that shares the same `rootKey` can verify any macaroon minted by any other instance. There is no session table, no token store, no central auth database. The macaroon itself carries all the information needed for verification: the HMAC signature chain, the payment hash, the credit balance, and any caveats. Verification is a pure cryptographic check against the root key.
+
+**Caveat enforcement** (route, expires, ip) is evaluated against the current request context. No external state needed.
+
+**Preimage verification** (SHA256 check) is a pure computation. No state needed.
+
+### What is stateful
+
+**Credit balances** are stored in the `StorageBackend` (SQLite by default). This is the only component that requires shared state for multi-instance deployments.
+
+**Invoice records** and **Cashu claims** are stored in the same backend for crash recovery and status polling.
+
+### Scaling strategies
+
+```
+                        ┌──────────────┐
+                        │ Load balancer │
+                        └──────┬───────┘
+               ┌───────────────┼───────────────┐
+               ▼               ▼               ▼
+        ┌─────────────┐ ┌─────────────┐ ┌─────────────┐
+        │ toll-booth-1 │ │ toll-booth-2 │ │ toll-booth-3 │
+        │ rootKey: ABC │ │ rootKey: ABC │ │ rootKey: ABC │
+        └──────┬──────┘ └──────┬──────┘ └──────┬──────┘
+               └───────────────┼───────────────┘
+                               ▼
+                     ┌──────────────────┐
+                     │ Shared storage   │
+                     │ (external DB or  │
+                     │  sticky sessions)│
+                     └──────────────────┘
+```
+
+**Single node (simplest):** One toll-booth instance with SQLite. Handles thousands of requests per second. This is sufficient for most deployments.
+
+**Sticky sessions:** Run multiple instances, each with its own SQLite database. Use session affinity at the load balancer (hash on the `Authorization` header or client IP) so each client always hits the same instance. No shared storage needed; each instance manages its own credit balances.
+
+**Shared storage:** Implement a custom `StorageBackend` backed by PostgreSQL, Redis, or another shared data store. All instances share credit balances and invoice records. This is the most flexible approach but requires more infrastructure.
+
+```typescript
+import { Booth } from '@forgesworn/toll-booth'
+
+// Every instance uses the same rootKey and shared storage
+const booth = new Booth({
+  adapter: 'express',
+  backend: phoenixdBackend({ url: '...', password: '...' }),
+  rootKey: process.env.ROOT_KEY!,       // same across all instances
+  storage: myPostgresStorage(),          // custom StorageBackend implementation
+  pricing: { '/api': 10 },
+  upstream: 'http://localhost:8080',
+})
+```
+
+The `StorageBackend` interface is intentionally minimal (credit balance, invoice storage, Cashu claims). Implementing it against a shared database is straightforward; see `src/storage/interface.ts` for the full interface and `src/storage/memory.ts` for a reference implementation.
+
+### Key management for distributed deployments
+
+All instances must share the same `rootKey`. A macaroon minted by instance A must be verifiable by instance B. Store the root key in a secrets manager (AWS Secrets Manager, HashiCorp Vault, Kubernetes Secrets) and inject it via environment variable. Never derive different keys per instance.
+
+If you rotate the root key, all outstanding macaroons become invalid. Coordinate rotation with your credit tier durations, or implement a brief grace period by checking against both the old and new keys (this requires a thin wrapper around the `Booth` class).
