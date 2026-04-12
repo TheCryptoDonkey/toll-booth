@@ -1,3 +1,12 @@
+## [4.5.4](https://github.com/forgesworn/toll-booth/compare/v4.5.3...v4.5.4) (2026-04-12)
+
+
+### Chores
+
+* first release via forgesworn/anvil v0.8 pipeline (replaces semantic-release)
+* bump actions/checkout to v6 and actions/setup-node to v6
+* dev-dependency refresh (hono, vite, @hono/node-server, lodash-es)
+
 ## [4.5.3](https://github.com/forgesworn/toll-booth/compare/v4.5.2...v4.5.3) (2026-04-12)
 
 
