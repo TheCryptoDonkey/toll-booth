@@ -1,3 +1,20 @@
+## [4.5.5](https://github.com/forgesworn/toll-booth/compare/v4.5.3...v4.5.5) (2026-04-12)
+
+
+### Bug Fixes
+
+* regenerate cashu-ts patch for v3.6.3 (production-minor bump in #17 left patch pinned to 3.6.1, breaking patch-package at install)
+
+
+### Chores
+
+* first release via forgesworn/anvil v0.8 pipeline (replaces semantic-release)
+* pin ci.yml action refs to commit SHAs (required by anvil strict-action-pins gate)
+* bump actions/checkout to v6 and actions/setup-node to v6
+* dev-dependency refresh (hono, vite, @hono/node-server, lodash-es)
+
+> Note: v4.5.4 was tagged but never reached npm — it was the first attempt at the anvil v0.8 pipeline and surfaced the two caller-side issues fixed above. Skipping 4.5.4 on npm in favour of 4.5.5.
+
 ## [4.5.4](https://github.com/forgesworn/toll-booth/compare/v4.5.3...v4.5.4) (2026-04-12)
 
 
