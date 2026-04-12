@@ -1,3 +1,10 @@
+## [4.5.2](https://github.com/forgesworn/toll-booth/compare/v4.5.1...v4.5.2) (2026-04-12)
+
+
+### Bug Fixes
+
+* resolve runtime dependency vulnerabilities ([319619f](https://github.com/forgesworn/toll-booth/commit/319619ff4e805434e91fb125ac9474aeaf08a36c))
+
 ## [4.5.1](https://github.com/forgesworn/toll-booth/compare/v4.5.0...v4.5.1) (2026-04-07)
 
 
