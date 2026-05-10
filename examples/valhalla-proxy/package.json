@@ -8,7 +8,7 @@
     "build": "tsc"
   },
   "dependencies": {
-    "toll-booth": "file:../../",
+    "@forgesworn/toll-booth": "file:../../",
     "express": "^5.2.1",
     "cors": "^2.8.5"
   },
