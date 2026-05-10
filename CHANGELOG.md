@@ -47,6 +47,14 @@
 
 # [4.5.0](https://github.com/forgesworn/toll-booth/compare/v4.4.2...v4.5.0) (2026-03-28)
 
+## 4.6.1 (2026-05-10)
+
+### Bug Fixes
+
+- use @forgesworn/toll-booth dep key to match scoped package name (example)
+
+
+
 ## 4.6.0 (2026-05-10)
 
 ### Features
