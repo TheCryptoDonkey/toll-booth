@@ -47,6 +47,14 @@
 
 # [4.5.0](https://github.com/forgesworn/toll-booth/compare/v4.4.2...v4.5.0) (2026-03-28)
 
+## 4.6.0 (2026-05-10)
+
+### Features
+
+- wire MAX_PENDING_PER_IP env var in valhalla-proxy (example)
+
+
+
 
 ### Features
 
