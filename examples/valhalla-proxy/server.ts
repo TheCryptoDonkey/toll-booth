@@ -37,6 +37,9 @@ const booth = new Booth({
   dbPath: process.env.TOLL_BOOTH_DB_PATH ?? './toll-booth.db',
   rootKey: process.env.ROOT_KEY,
   trustProxy,
+  invoiceRateLimit: process.env.MAX_PENDING_PER_IP
+    ? { maxPendingPerIp: parseInt(process.env.MAX_PENDING_PER_IP, 10) }
+    : undefined,
   creditTiers: [
     { amountSats: 1_000,   creditSats: 1_000,   label: 'Starter' },
     { amountSats: 10_000,  creditSats: 11_100,  label: 'Pro' },

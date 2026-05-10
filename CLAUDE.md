@@ -109,6 +109,7 @@ Backend conformance tests (`conformance.ts`) export a shared factory; each backe
 | `TOLL_BOOTH_DB_PATH` | ./toll-booth.db | SQLite database path |
 | `ROOT_KEY` | — | Macaroon signing key (hex, 64 chars / 32 bytes). **Required for production.** |
 | `TRUST_PROXY` | false | Trust `X-Forwarded-For` / `X-Real-IP` headers |
+| `MAX_PENDING_PER_IP` | unset | If set, cap pending unpaid invoices per client IP (rate-limit /create-invoice abuse) |
 | `PORT` | 3000 | HTTP listen port |
 | `LND_REST_URL` | — | LND REST endpoint (integration tests) |
 | `LND_MACAROON` | — | LND admin macaroon, hex (integration tests) |
